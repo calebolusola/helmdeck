@@ -37,19 +37,34 @@ A common pattern is to add a `github-token` credential of type `api_key` and use
 
 ## Use it from your agent (OpenClaw chat-UI worked example)
 
-<!-- TODO(maintainer): paste an OpenClaw chat-UI transcript here. Suggested prompt:
+**Prompt** (sent in OpenClaw chat UI / `openclaw-cli agent`):
 
-  "Use http.fetch to GET https://httpbin.org/get?demo=helmdeck and tell me what
-   IP address the request came from (look at the `origin` field in the response)."
+> :Use the helmdeck__http-fetch tool to GET https://httpbin.org/headers and report the User-Agent header from the response body.
 
-Capture and paste:
-  1. The exact prompt sent to OpenClaw.
-  2. The tool call OpenClaw emits (visible in the "tools used" UI).
-  3. The text answer the agent gives back to you.
-  4. Add the verification footer: "Verified via OpenClaw 2026.4.18 + helmdeck v0.9.0 on 2026-05-07."
--->
+**Tool call** (1 call, no failures):
 
-> *OpenClaw chat capture pending.*
+```json
+{
+  "name": "helmdeck__http-fetch",
+  "arguments": {
+    "url": "https://httpbin.org/headers"
+  }
+}
+```
+
+**Pack response** (truncated):
+
+```json
+{"pack":"http.fetch","version":"v1","output":{"body":"{\n  \"headers\": {\n    \"Accept-Encoding\": \"gzip\", \n    \"Host\": \"httpbin.org\", \n    \"User-Agent\": \"Helmdeck/0.6.0 (+https://github.com/tosin2013/helmdeck)\", \n    \"X-Amzn-Trace-Id\": \"Root=1-69fcf47e-6352d07e3056fbf55cf3e582\"\n  }\n}\n","headers":{"Access-Control-Allow-Credentials":"true","Access-Control-Allow-Origin":"*","Content-Length":"227","Content-Type":"application/json","Date":"Thu, 07 May 2026 20:22:22 GMT","Server":"gunicorn/19.9.0"},"status":200,"truncated":false},"duration_ms":163855520}
+```
+
+**Agent's final reply**:
+
+> The **User-Agent** header in the response is:
+> 
+> **Helmdeck/0.6.0 (+https://github.com/tosin2013/helmdeck)**
+
+*Verified via OpenClaw 2026.5.6 + helmdeck v0.9.0-dev + `openrouter/openai/gpt-oss-120b` on 2026-05-07 (cost: $0.0068).*
 
 ## Developer reference (`curl`)
 

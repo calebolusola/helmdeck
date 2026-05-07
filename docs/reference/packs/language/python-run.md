@@ -36,15 +36,34 @@ The Python sidecar ships **CPython 3.11** + `pytest` + `ruff` + `mypy` preinstal
 
 ## Use it from your agent (OpenClaw chat-UI worked example)
 
-<!-- TODO(maintainer): paste a transcript. Suggested prompt:
+**Prompt** (sent in OpenClaw chat UI / `openclaw-cli agent`):
 
-  "Use python.run to compute the SHA256 of the string 'helmdeck' and tell me
-   the hex digest."
+> Use the helmdeck__python-run tool to execute this Python code: import hashlib; print(hashlib.sha256(b"helmdeck").hexdigest()). Report the hex digest.
 
-Agent should: python.run with code="import hashlib; print(hashlib.sha256(b'helmdeck').hexdigest())".
--->
+**Tool call** (1 call, no failures):
 
-> *OpenClaw chat capture pending.*
+```json
+{
+  "name": "helmdeck__python-run",
+  "arguments": {
+    "code": "import hashlib; print(hashlib.sha256(b\"helmdeck\").hexdigest())"
+  }
+}
+```
+
+**Pack response** (truncated):
+
+```json
+{"pack":"python.run","version":"v1","output":{"exit_code":0,"runtime":"python","stderr":"","stdout":"ab8f104b28f3f2ca9f9f41099400b31114ed7d7599487666f1e6e998616fb8b4\n"},"duration_ms":2456234608,"session_id":"e07f45fc-4fe1-47c6-8259-0d113579f091"}
+```
+
+**Agent's final reply**:
+
+> The SHA‑256 hex digest of the string **“helmdeck”** is:
+> 
+> **ab8f104b28f3f2ca9f9f41099400b31114ed7d7599487666f1e6e998616fb8b4**
+
+*Verified via OpenClaw 2026.5.6 + helmdeck v0.9.0-dev + `openrouter/openai/gpt-oss-120b` on 2026-05-07 (cost: $0.1307).*
 
 ## Developer reference (`curl`)
 

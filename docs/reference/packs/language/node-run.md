@@ -34,16 +34,33 @@ The JavaScript counterpart to [`python.run`](./python-run.md). Runs JS code (`no
 
 ## Use it from your agent (OpenClaw chat-UI worked example)
 
-<!-- TODO(maintainer): paste a transcript. Suggested prompt:
+**Prompt** (sent in OpenClaw chat UI / `openclaw-cli agent`):
 
-  "Use node.run to fetch package metadata for 'express' from npm via the npm
-   registry API and tell me the latest version."
+> Use the helmdeck__node-run tool to execute this JavaScript: const v = process.version; const r = require("crypto").createHash("sha256").update("helmdeck").digest("hex"); console.log(v, r). Report the Node version and the sha256 hex digest.
 
-Agent should: node.run with code that uses fetch() against
-https://registry.npmjs.org/express.
--->
+**Tool call** (1 call, no failures):
 
-> *OpenClaw chat capture pending.*
+```json
+{
+  "name": "helmdeck__node-run",
+  "arguments": {
+    "code": "const v = process.version; const r = require(\"crypto\").createHash(\"sha256\").update(\"helmdeck\").digest(\"hex\"); console.log(v, r);"
+  }
+}
+```
+
+**Pack response** (truncated):
+
+```json
+{"pack":"node.run","version":"v1","output":{"exit_code":0,"runtime":"node","stderr":"","stdout":"v20.20.2 ab8f104b28f3f2ca9f9f41099400b31114ed7d7599487666f1e6e998616fb8b4\n"},"duration_ms":2284290299,"session_id":"4ab3278a-2601-4897-a475-8fce0886d3f2"}
+```
+
+**Agent's final reply**:
+
+> Node version: **v20.20.2**  
+> SHA‑256 hex digest of “helmdeck”: **ab8f104b28f3f2ca9f9f41099400b31114ed7d7599487666f1e6e998616fb8b4**
+
+*Verified via OpenClaw 2026.5.6 + helmdeck v0.9.0-dev + `openrouter/openai/gpt-oss-120b` on 2026-05-07 (cost: $0.1351).*
 
 ## Developer reference (`curl`)
 

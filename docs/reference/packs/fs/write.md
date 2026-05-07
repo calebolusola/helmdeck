@@ -32,15 +32,51 @@ Same path-safety guards as [`fs.read`](./read.md) — `clone_path` must be under
 
 ## Use it from your agent (OpenClaw chat-UI worked example)
 
-<!-- TODO(maintainer): paste a transcript. Suggested chained prompt:
+**Prompt** (sent in OpenClaw chat UI / `openclaw-cli agent`):
 
-  "Clone helmdeck, then create a file `notes.md` at the root with a one-line
-   note that says 'capture demo'."
+> Clone https://github.com/tosin2013/helmdeck.git via helmdeck__repo-fetch, then use helmdeck__fs-write to create a file named demo-capture.md at the clone_path root with content "# Demo capture\nGenerated during OpenClaw transcript capture.". Report the sha256.
 
-Agent should chain repo.fetch → fs.write.
--->
+**Tool call** (2 calls, no failures):
 
-> *OpenClaw chat capture pending.*
+```json
+{
+  "name": "helmdeck__repo-fetch",
+  "arguments": {
+    "url": "https://github.com/tosin2013/helmdeck.git"
+  }
+}
+```
+
+**Pack response** (truncated):
+
+```json
+{"pack":"repo.fetch","version":"v1","output":{"clone_path":"/tmp/helmdeck-clone-fm9zfo","commit":"9c4bb08ce5f7f96478728fc8952b9a41a8e0d8e8","credential":"","doc_hints":["README*","docs/**/*.md","docs/**/*.adoc","docs/**/*.rst","content/**/*.md","content/**/*.adoc"],"entrypoints":[{"kind":"build","path":"Makefile"},{"kind":"go","path":"go.mod"},{"kind":"agent-doc","path":"CLAUDE.md"},{"kind":"contributing","path":"CONTRIBUTING.md"}],"files":371,"readme":{"content":"# helmdeck\n\n\u003e Most browser agents require GPT-4o or Claude Sonnet to work reliably.\n\u003e Helmdeck is built for the other 99% of deployments — **local 7B models,\n\u003e air-gapped environments, and teams that can't send credentials to a\n\u003e cloud API.** It wraps every browser, desktop, git, and code action\n\u003e i
+  ...[truncated]
+```
+
+```json
+{
+  "name": "helmdeck__fs-write",
+  "arguments": {
+    "clone_path": "/tmp/helmdeck-clone-fm9zfo",
+    "path": "demo-capture.md",
+    "content": "# Demo capture\nGenerated during OpenClaw transcript capture."
+  }
+}
+```
+
+**Pack response** (truncated):
+
+```json
+{"pack":"fs.write","version":"v1","output":{"sha256":"e8fae2dce78f3e8ed39a8e19881bb8426b64ec836dc6b09a04896bc1c02c82a2","size":60},"duration_ms":2236392716,"session_id":"71136928-722c-40a0-b575-ea080855483d"}
+```
+
+**Agent's final reply**:
+
+> File written successfully.  
+> **SHA‑256:** `e8fae2dce78f3e8ed39a8e19881bb8426b64ec836dc6b09a04896bc1c02c82a2`
+
+*Verified via OpenClaw 2026.5.6 + helmdeck v0.9.0-dev + `openrouter/openai/gpt-oss-120b` on 2026-05-07 (cost: $0.0431).*
 
 ## Developer reference (`curl`)
 

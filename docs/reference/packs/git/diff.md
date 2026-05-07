@@ -32,16 +32,52 @@ Useful as the verify-before-commit step in the code-edit loop: `fs.read` → `fs
 
 ## Use it from your agent (OpenClaw chat-UI worked example)
 
-<!-- TODO(maintainer): paste a transcript. Suggested prompt:
+**Prompt** (sent in OpenClaw chat UI / `openclaw-cli agent`):
 
-  "Clone helmdeck, modify the README to add a note about the new docs site at
-   the top, and show me the diff before committing."
+> Clone https://github.com/tosin2013/helmdeck.git via helmdeck__repo-fetch, then use helmdeck__git-diff against the clean working tree. Report files_changed (should be 0).
 
-Agent should chain: repo.fetch → fs.patch → git.diff → respond with the diff
-content (typically wrapped in a markdown code block).
--->
+**Tool call** (2 calls, no failures):
 
-> *OpenClaw chat capture pending.*
+```json
+{
+  "name": "helmdeck__repo-fetch",
+  "arguments": {
+    "url": "https://github.com/tosin2013/helmdeck.git"
+  }
+}
+```
+
+**Pack response** (truncated):
+
+```json
+{"pack":"repo.fetch","version":"v1","output":{"clone_path":"/tmp/helmdeck-clone-9mPeEZ","commit":"9c4bb08ce5f7f96478728fc8952b9a41a8e0d8e8","credential":"","doc_hints":["README*","docs/**/*.md","docs/**/*.adoc","docs/**/*.rst","content/**/*.md","content/**/*.adoc"],"entrypoints":[{"kind":"build","path":"Makefile"},{"kind":"go","path":"go.mod"},{"kind":"agent-doc","path":"CLAUDE.md"},{"kind":"contributing","path":"CONTRIBUTING.md"}],"files":371,"readme":{"content":"# helmdeck\n\n\u003e Most browser agents require GPT-4o or Claude Sonnet to work reliably.\n\u003e Helmdeck is built for the other 99% of deployments — **local 7B models,\n\u003e air-gapped environments, and teams that can't send credentials to a\n\u003e cloud API.** It wraps every browser, desktop, git, and code action\n\u003e i
+  ...[truncated]
+```
+
+```json
+{
+  "name": "helmdeck__git-diff",
+  "arguments": {
+    "clone_path": "/tmp/helmdeck-clone-9mPeEZ",
+    "staged": false
+  }
+}
+```
+
+**Pack response** (truncated):
+
+```json
+{"pack":"git.diff","version":"v1","output":{"diff":"","files_changed":0},"duration_ms":2514513803,"session_id":"4657bd1f-4a31-45ef-8bb8-4536379e8500"}
+```
+
+**Agent's final reply**:
+
+> **git‑diff result**
+> 
+> - **files_changed:** 0  
+> - **diff:** *(empty)*  
+
+*Verified via OpenClaw 2026.5.6 + helmdeck v0.9.0-dev + `openrouter/openai/gpt-oss-120b` on 2026-05-07 (cost: $0.1086).*
 
 ## Developer reference (`curl`)
 

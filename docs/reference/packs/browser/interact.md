@@ -49,14 +49,106 @@ Each entry in `actions` is one of:
 
 ## Use it from your agent (OpenClaw chat-UI worked example)
 
-<!-- TODO(maintainer): paste an OpenClaw chat-UI transcript. Suggested prompt:
+**Prompt** (sent in OpenClaw chat UI / `openclaw-cli agent`):
 
-  "Use browser.interact to visit https://example.com, take a screenshot,
-   extract the text of the h1, and assert that 'Example Domain' is on the page.
-   Tell me whether the assertion passed."
--->
+> :Use the helmdeck__browser-interact tool against https://example.com with these actions: take a screenshot, extract the h1 text content, and assert that the text "Example Domain" is on the page. Report what you extracted and whether the assertion passed.
 
-> *OpenClaw chat capture pending.*
+**Tool call** (3 calls, no failures):
+
+```json
+{
+  "name": "helmdeck__browser-interact",
+  "arguments": {
+    "url": "https://example.com",
+    "actions": [
+      {
+        "action": "screenshot"
+      },
+      {
+        "action": "extract",
+        "selector": "h1"
+      },
+      {
+        "action": "assert",
+        "assertion": "text includes",
+        "value": "Example Domain"
+      }
+    ]
+  }
+}
+```
+
+**Pack response** (truncated):
+
+```json
+{"error":"invalid_input","message":"action[2]: unknown action \"assert\" (supported: click, type, focus, screenshot, extract, assert_text, wait, execute)"}
+```
+
+```json
+{
+  "name": "helmdeck__browser-interact",
+  "arguments": {
+    "actions": [
+      {
+        "action": "screenshot"
+      },
+      {
+        "action": "extract",
+        "selector": "h1"
+      },
+      {
+        "action": "assert_text",
+        "selector": "h1",
+        "value": "Example Domain"
+      }
+    ],
+    "url": "https://example.com"
+  }
+}
+```
+
+**Pack response** (truncated):
+
+```json
+{"error":"invalid_input","message":"action[2] assert_text: text required"}
+```
+
+```json
+{
+  "name": "helmdeck__browser-interact",
+  "arguments": {
+    "url": "https://example.com",
+    "actions": [
+      {
+        "action": "screenshot"
+      },
+      {
+        "action": "extract",
+        "selector": "h1"
+      },
+      {
+        "action": "assert_text",
+        "selector": "h1",
+        "text": "Example Domain"
+      }
+    ]
+  }
+}
+```
+
+**Pack response** (truncated):
+
+```json
+{"pack":"browser.interact","version":"v1","output":{"assertions_passed":true,"extractions":{"h1":"Example Domain"},"screenshots":["/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9YWVogAAAAAAAA9tYAAQAAAADTLXBhcmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAcAEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADb/2wBDAAMCA
+  ...[truncated]
+```
+
+**Agent's final reply**:
+
+> **Extracted h1 text:** `Example Domain`  
+> **Assertion result:** Passed (the page contains the text “Example Domain”).
+
+*Verified via OpenClaw 2026.5.6 + helmdeck v0.9.0-dev + `openrouter/openai/gpt-oss-120b` on 2026-05-07 (cost: $0.0118).*
 
 ## Developer reference (`curl`)
 

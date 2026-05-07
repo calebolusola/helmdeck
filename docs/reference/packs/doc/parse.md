@@ -55,22 +55,38 @@ Exactly one of `source_url` / `source_b64` must be set. Base64 payload capped at
 
 ## Use it from your agent (OpenClaw chat-UI worked example)
 
-<!-- TODO(maintainer): paste an OpenClaw chat-UI transcript. Suggested prompt:
+**Prompt** (sent in OpenClaw chat UI / `openclaw-cli agent`):
 
-  "I'm going to paste a base64 PDF — use doc.parse to extract its tables to markdown
-   and summarize what's in row 3."
+> Use the helmdeck__doc-parse tool with source_url=https://arxiv.org/pdf/2501.17887 to extract the document content as markdown. If it fails, tell me the exact error.
 
-(Or once the URL handler is fixed):
-  "Use doc.parse on https://arxiv.org/pdf/<id>.pdf and tell me the abstract."
+**Tool call** (1 call, no failures):
 
-Capture and paste:
-  1. The chat prompt sent.
-  2. The tool call OpenClaw emits.
-  3. The agent's text reply.
-  4. Footer: "Verified via OpenClaw 2026.4.18 + helmdeck v0.9.0 on <date>."
--->
+```json
+{
+  "name": "helmdeck__doc-parse",
+  "arguments": {
+    "source_url": "https://arxiv.org/pdf/2501.17887",
+    "do_ocr": false,
+    "formats": [
+      "markdown"
+    ]
+  }
+}
+```
 
-> *OpenClaw chat capture pending.*
+**Pack response** (truncated):
+
+```json
+{"error":"invalid_input","message":"unsupported format \"markdown\"; use md, text, or html"}
+```
+
+**Agent's final reply**:
+
+> The tool returned an error:
+> 
+> **unsupported format “markdown”; use md, text, or html**
+
+*Verified via OpenClaw 2026.5.6 + helmdeck v0.9.0-dev + `openrouter/openai/gpt-oss-120b` on 2026-05-07 (cost: $0.0257).*
 
 ## Developer reference (`curl`)
 

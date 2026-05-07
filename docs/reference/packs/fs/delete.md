@@ -31,15 +31,71 @@ The pack returns `{"deleted": true, "path": "..."}` on success. **Pair with [`gi
 
 ## Use it from your agent (OpenClaw chat-UI worked example)
 
-<!-- TODO(maintainer): paste a transcript. Suggested chained prompt:
+**Prompt** (sent in OpenClaw chat UI / `openclaw-cli agent`):
 
-  "Clone helmdeck, then remove the file `docs/sitemap.xml` (which is auto-generated)
-   and commit the change with the message 'chore: drop generated sitemap'."
+> Clone https://github.com/tosin2013/helmdeck.git via helmdeck__repo-fetch, write a temp file named demo-delete.md with helmdeck__fs-write, then immediately remove it with helmdeck__fs-delete. Confirm the deletion succeeded.
 
-Agent should chain: repo.fetch → fs.delete → git.commit.
--->
+**Tool call** (3 calls, no failures):
 
-> *OpenClaw chat capture pending.*
+```json
+{
+  "name": "helmdeck__repo-fetch",
+  "arguments": {
+    "url": "https://github.com/tosin2013/helmdeck.git"
+  }
+}
+```
+
+**Pack response** (truncated):
+
+```json
+{"pack":"repo.fetch","version":"v1","output":{"clone_path":"/tmp/helmdeck-clone-WPLjuP","commit":"9c4bb08ce5f7f96478728fc8952b9a41a8e0d8e8","credential":"","doc_hints":["README*","docs/**/*.md","docs/**/*.adoc","docs/**/*.rst","content/**/*.md","content/**/*.adoc"],"entrypoints":[{"kind":"build","path":"Makefile"},{"kind":"go","path":"go.mod"},{"kind":"agent-doc","path":"CLAUDE.md"},{"kind":"contributing","path":"CONTRIBUTING.md"}],"files":371,"readme":{"content":"# helmdeck\n\n\u003e Most browser agents require GPT-4o or Claude Sonnet to work reliably.\n\u003e Helmdeck is built for the other 99% of deployments — **local 7B models,\n\u003e air-gapped environments, and teams that can't send credentials to a\n\u003e cloud API.** It wraps every browser, desktop, git, and code action\n\u003e i
+  ...[truncated]
+```
+
+```json
+{
+  "name": "helmdeck__fs-write",
+  "arguments": {
+    "clone_path": "/tmp/helmdeck-clone-WPLjuP",
+    "path": "demo-delete.md",
+    "content": "temp delete file"
+  }
+}
+```
+
+**Pack response** (truncated):
+
+```json
+{"pack":"fs.write","version":"v1","output":{"sha256":"25cf925e9fe44bdf62c40c654cf2ae6db6746f012ae512e763bc70df0dc70642","size":16},"duration_ms":2695705116,"session_id":"4c8bbbc6-d681-48c3-8e14-2a4d3c6ee2ff"}
+```
+
+```json
+{
+  "name": "helmdeck__fs-delete",
+  "arguments": {
+    "clone_path": "/tmp/helmdeck-clone-WPLjuP",
+    "path": "demo-delete.md"
+  }
+}
+```
+
+**Pack response** (truncated):
+
+```json
+{"pack":"fs.delete","version":"v1","output":{"deleted":true,"path":"demo-delete.md"},"duration_ms":2321804027,"session_id":"0c099a57-e75e-4498-b08c-10bc675a8128"}
+```
+
+**Agent's final reply**:
+
+> The file **demo-delete.md** was successfully removed:
+> 
+> - **Deleted:** true  
+> - **Path:** `demo-delete.md`  
+> 
+> Deletion confirmed.
+
+*Verified via OpenClaw 2026.5.6 + helmdeck v0.9.0-dev + `openrouter/openai/gpt-oss-120b` on 2026-05-07 (cost: $0.0803).*
 
 ## Developer reference (`curl`)
 

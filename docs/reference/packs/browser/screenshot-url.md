@@ -30,17 +30,35 @@ The reference pack for the helmdeck pack substrate. Drives a headless Chromium s
 
 ## Use it from your agent (OpenClaw chat-UI worked example)
 
-<!-- TODO(maintainer): paste an OpenClaw chat-UI transcript. Suggested prompt:
+**Prompt** (sent in OpenClaw chat UI / `openclaw-cli agent`):
 
-  "Take a full-page screenshot of https://example.com and tell me what's on
-   the page."
+> :Use the helmdeck__browser-screenshot_url tool to take a fullPage screenshot of https://example.com. Tell me the artifact_key and the size in bytes.
 
-The agent should call browser.screenshot_url, then optionally use
-doc.ocr or vision.extract_visible_text on the resulting artifact to read
-the rendered text.
--->
+**Tool call** (1 call, no failures):
 
-> *OpenClaw chat capture pending.*
+```json
+{
+  "name": "helmdeck__browser-screenshot_url",
+  "arguments": {
+    "url": "https://example.com",
+    "fullPage": true
+  }
+}
+```
+
+**Pack response** (truncated):
+
+```json
+{"pack":"browser.screenshot_url","version":"v1","output":{"artifact_key":"browser.screenshot_url/e45db6a88080613e-screenshot.png","size":16491,"url":"https://example.com"},"artifacts":[{"key":"browser.screenshot_url/e45db6a88080613e-screenshot.png","url":"http://garage:3900/helmdeck-artifacts/browser.screenshot_url/e45db6a88080613e-screenshot.png?X-Amz-Algorithm=AWS4-HMAC-SHA256\u0026X-Amz-Credential=GKaef177ebe9fd814dc103b84b%2F20260507%2Fgarage%2Fs3%2Faws4_request\u0026X-Amz-Date=20260507T202256Z\u0026X-Amz-Expires=900\u0026X-Amz-SignedHeaders=host\u0026X-Amz-Signature=6759dc0df6e691a1bf36f610e6511153f221aedefd0edae0d45675cfc8f27d92","size":16491,"content_type":"image/png","created_at":"2026-05-07T20:22:56.861538262Z","pack":"browser.screenshot_url"}],"duration_ms":2872412151,"session_id
+  ...[truncated]
+```
+
+**Agent's final reply**:
+
+> - **artifact_key:** `browser.screenshot_url/e45db6a88080613e-screenshot.png`  
+> - **size:** 16,491 bytes
+
+*Verified via OpenClaw 2026.5.6 + helmdeck v0.9.0-dev + `openrouter/openai/gpt-oss-120b` on 2026-05-07 (cost: $0.0082).*
 
 ## Developer reference (`curl`)
 
