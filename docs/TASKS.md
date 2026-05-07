@@ -52,7 +52,7 @@ Each task lists its source ADR(s) and prerequisite tasks. IDs are stable for cro
 | T212 | A2A Agent Card endpoint `/.well-known/agent.json` auto-generated from pack registry | P2 | 026 | T207 |
 | T213 | A2A task endpoint `POST /a2a/v1/tasks` with SSE streaming for long-running packs | P2 | 026 | T212 |
 
-**Phase 2 exit criteria:** weak-model success rate ≥90% on `browser.screenshot_url` + `web.scrape_spa` against MiniMax-M2.7; AI gateway proxies all five providers; pack registry hot-loads new packs without restart.
+**Phase 2 exit criteria:** weak-model success rate ≥90% on `browser.screenshot_url` + `web.scrape_spa` against the **MiniMax-M2.7 + Llama 3.2 7B** cohort (per RELEASES.md v0.2.0 hard exit gate); AI gateway proxies all five providers; pack registry hot-loads new packs without restart.
 
 ---
 
@@ -170,8 +170,39 @@ Each task lists its source ADR(s) and prerequisite tasks. IDs are stable for cro
 | T610 | Credential Vault panel: credentials table, Add Credential modal, Session Cookie import tool, Usage Log tab | P1 | 007 | T601, T501 |
 | T611 | Audit Logs panel: filter bar, infinite-scroll table, Details drawer with redacted JSON payload | P1 | 013 | T601, T109 |
 | T612 | "Connect" UI buttons for Claude Code / Claude Desktop / OpenClaw / Gemini CLI emitting OS-detected one-liners | P1 | 025, 030 | T601, T309 |
+| T602a | Recharts memory chart on Dashboard panel: time-series of `process_resident_memory_bytes` from the control-plane Prometheus scrape | P2 | — | T602 |
+| T603a | New Session modal on Browser Sessions panel: form-based session creation with `shm_size`, `timeout`, `maxTasks`, mem/cpu limits | P1 | 004 | T603 |
+| T604a | Add/Rotate provider key modal on AI Providers panel: encrypted-at-rest write to keystore, hot reload via `gateway.Hydrate` | P1 | 005 | T604, T202a |
+| T605a | Add Server modal on MCP Registry panel: stdio/SSE/WebSocket transport pickers, server health probe | P1 | 006 | T605 |
+| T606a | Pack Test Runner tab on Capability Packs panel: form derived from input schema, dispatch to `POST /api/v1/packs/{name}`, render typed output + artifacts | P0 | 003, 008, 024 | T606 |
+| T609a | Security Policies panel — edit + reload-config: write-through to `HELMDECK_EGRESS_ALLOWLIST` etc.; `POST /api/v1/security/reload` warm-reloads guards without stack restart | P2 | 011 | T609 |
+| T610a | Add Credential modal + Usage Log tab on Credential Vault panel: typed credential entry, masked value reveal-on-click, scoped ACL editor | P1 | 007 | T610 |
+| T612a | OS-detected one-liners on Connect Clients panel: macOS/Linux/Windows command snippets per client (Claude Code, Claude Desktop, OpenClaw, Gemini CLI, Hermes Agent), copy buttons | P2 | 025, 030 | T612 |
+| T615 | GitHub PAT setup in `scripts/install.sh` — optional interactive prompt stores token in vault as `github-token` so the GitHub pack family works out-of-box | P1 | 007 | T501, T570 |
+| T616 | GitHub webhook listener at `POST /api/v1/webhooks/github` — HMAC-SHA256 signature validation, async pack dispatch per event rules (push, pull_request initially) | P2 | 033 | T207, T617 |
 
 **Phase 6 exit criteria:** every read-only Phase 6 panel (Dashboard, Sessions, AI Providers, MCP Registry, Capability Packs, Security Policies, Credential Vault, Audit Logs, Connect Clients) ships against a real backend with success-rate visibility (T607). Pack *authoring* (T608) is deferred to Phase 8 — operators observe and dispatch packs in v0.6.0; they author them in v1.x once a sandboxed runtime (T801) lands.
+
+---
+
+## Phase 6.5 — MCP Server Hosting & Pack Evolution
+
+**Goal:** validate the "host, don't rebuild" pattern from ADR 035 by bundling third-party MCP servers (Playwright MCP) and integration services (Firecrawl, Docling) into the helmdeck stack, plus add native computer-use tool routing and three composite/pipeline packs that exploit the new substrate. Ships as v0.8.0.
+
+| ID | Task | Pri | ADRs | Depends on |
+| :--- | :--- | :--- | :--- | :--- |
+| T807a | Bundle Playwright MCP (`@playwright/mcp`) into the browser sidecar Dockerfile (Node 20 + `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`); auto-launch via `npx --cdp-endpoint=http://127.0.0.1:9222 --port 8931` after Chromium is live; surface as `playwright_mcp_endpoint` on the session REST. Opt-out via `HELMDECK_PLAYWRIGHT_MCP_ENABLED=false`. | P0 | 035 | T104, T105 |
+| T807b | Add Firecrawl as an optional compose overlay (`deploy/compose/compose.firecrawl.yml`); new `web.scrape` pack (no selectors, returns clean markdown). Env-gated on `HELMDECK_FIRECRAWL_ENABLED`. Egress guard wraps the target URL before the upstream call. | P1 | 035 | T207, T508 |
+| T807c | Add Docling as an optional compose overlay (`compose.docling.yml` → `quay.io/docling-project/docling-serve:latest` with named model-cache volume); new `doc.parse` pack supersedes `doc.ocr` for layout/tables/multi-format. Env-gated on `HELMDECK_DOCLING_ENABLED`. | P1 | 035 | T207 |
+| ~~T807d~~ | ~~browser-use / Skyvern wrapper~~ — **superseded by T807f**. Native computer-use tool schemas now ship across all three frontier providers; wrapping a Python agent loop adds no value. | — | 035 | — |
+| T807e | `web.test` — natural-language browser testing via Playwright MCP accessibility tree. Plan-step loop: snapshot → ask gateway LLM for one tool call → dispatch via pwmcp → re-snapshot until done/fail/max_steps. Egress-guarded mid-test navigations. | P1 | 035 | T807a, T201 |
+| T807f | Native computer-use tool routing (supersedes T807d). Six work packages: gateway tool-use plumbing across Anthropic/OpenAI/Gemini, eight new desktop REST primitives, `vision.StepNative` cross-provider executor, `EventComputerUse` audit + replay, AgentStatus on noVNC banner, ADR 035 revision. JSON-prompt fallback for non-native providers. | P0 | 035 | T407, T201, T510 |
+| T622 | `research.deep` — Firecrawl-backed deep research composite pack: single `/v1/search` call with `scrapeOptions.formats=["markdown"]` does search + per-source scrape in one round trip; results synthesized by the gateway model with inline URL citations. Limit defaults 5, hard cap 10. | P2 | 035 | T807b, T201 |
+| T622a | `repo.fetch` context envelope (`tree`, `readme`, `entrypoints`, `doc_hints`, `signals`) so agents orient on the first turn; companion opt-in `repo.map` pack produces a ctags-derived structural symbol map under a token budget. Closes the "empty repo" false positive when README.adoc isn't auto-detected. | P1 | 022, 036 | T505 |
+| T623 | `content.ground` — link grounding for blog posts: extract verbatim claims from a markdown file via the gateway model, search Firecrawl for authoritative sources, write `[claim](url)` annotations back into the file via literal substring substitution. Hallucinated claims (text not in file) are skipped, not patched. | P2 | 035 | T622, T552 |
+| T406 | `slides.narrate` — narrated MP4 video from Marp decks (moved from Phase 4 with expanded scope). Per-slide PNGs → ElevenLabs TTS (vault `elevenlabs-key`) → ffmpeg segment assembly with optional fades → LLM-generated YouTube metadata (title, M:SS timestamps, tags). Degrades gracefully when key/model is absent. | P2 | 014 | T210, T501 |
+
+**Phase 6.5 exit criteria:** v0.8.0 tagged with 36 packs total; `scripts/validate-phase-6-5.sh` passes against a fresh stack including the Firecrawl + Docling overlays; native computer-use round-trip works against at least one of Anthropic / OpenAI / Gemini.
 
 ---
 
@@ -221,6 +252,7 @@ These are tracked but not on the GA critical path.
 | T813 | Marketplace UI panel — `/marketplace` route with browse-by-category, search, pack detail cards, install/uninstall buttons, trust badges (Core / Signed / Unsigned) | P1 | 034 | T812 |
 | T814 | Community marketplace repo (`tosin2013/helmdeck-marketplace`) — initial catalog with contribution guide, CI for manifest validation, cosign signing in release pipeline | P2 | 034 | T810 |
 | T815 | Pack ratings + install counts — requires `marketplace-web` frontend repo, user accounts (GitHub OAuth), star/rating system, install analytics behind `SessionRuntime` interface | P3 | 001 |
+| T816 | MCP Server Hosting framework — generic `helmdeck mcp install <server>` for community MCP servers with sandboxed execution; converges with the marketplace (T810) so any catalog entry that ships an MCP server, not just a pack manifest, can be hosted by helmdeck rather than rebuilt as a pack | P2 | 035 | T810, T811 |
 
 ---
 
