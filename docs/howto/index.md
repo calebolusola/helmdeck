@@ -8,6 +8,10 @@ description: Problem-solving recipes for common helmdeck tasks.
 
 Problem-solving recipes. Each guide assumes you already have helmdeck installed and answers a single, focused question: *how do I do X?*
 
+## Operations
+
+- **[Troubleshoot the install](./troubleshoot-install.md)** — symptom-first table for the known sharp edges in the install path: 502 on first session, GHCR pull failures, lost admin password, sidecar build hangs, blank UI panels, accidental `--reset`.
+
 ## Client integrations
 
 Wire helmdeck into your MCP-capable client of choice:

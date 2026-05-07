@@ -78,14 +78,23 @@ services:
     group_add:
       - "${HELMDECK_DOCKER_GID:-999}"
 
-  # Pre-pull the sidecar image at stack startup so the first session
-  # creation isn't a 30-second cold pull. One-shot service.
+  # Belt-and-suspenders pull of the sidecar image after the stack is up.
+  # scripts/install.sh now runs `docker compose pull --ignore-buildable`
+  # ahead of `compose up`, so this service is mostly redundant in the
+  # install path. It still helps when operators bring the stack up directly
+  # via `docker compose up` without install.sh.
+  #
+  # The previous `|| true` swallow was removed: a real pull failure now
+  # surfaces as Exited(1) on the warm container, visible in
+  # `docker compose ps` and `docker logs helmdeck-sidecar-warm`. The
+  # service has `restart: "no"` and no other service depends on it, so the
+  # rest of the stack still starts cleanly even on pull failure.
   sidecar-warm:
     image: docker:cli
     container_name: helmdeck-sidecar-warm
     restart: "no"
     entrypoint: ["/bin/sh", "-c"]
-    command: ["docker pull ghcr.io/tosin2013/helmdeck-sidecar:latest || true"]
+    command: ["docker pull ghcr.io/tosin2013/helmdeck-sidecar:latest"]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:

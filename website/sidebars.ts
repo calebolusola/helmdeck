@@ -3,11 +3,21 @@ import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
 const sidebars: SidebarsConfig = {
   tutorials: [
     'tutorials/index',
+    'tutorials/install-cli',
+    'tutorials/install-ui-walkthrough',
     'integrations/pack-demo-playbook',
   ],
 
   howto: [
     'howto/index',
+    {
+      type: 'category',
+      label: 'Operations',
+      collapsed: false,
+      items: [
+        'howto/troubleshoot-install',
+      ],
+    },
     {
       type: 'category',
       label: 'Client integrations',

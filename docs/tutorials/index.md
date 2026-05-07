@@ -10,7 +10,9 @@ Learning-oriented walkthroughs. Read these first if you're new to helmdeck — e
 
 ## Available tutorials
 
-- **[Pack demo playbook](../integrations/pack-demo-playbook.md)** — 20 copy-pasteable prompts that exercise every shipped capability pack against a live install. Use it after the install script to verify your environment.
+- **[Install helmdeck (CLI walkthrough)](./install-cli.md)** — from `git clone` to a running stack with the admin password printed. ~10 minutes.
+- **[Configure helmdeck via the Management UI](./install-ui-walkthrough.md)** — panel-by-panel tour of the post-install steps every operator needs.
+- **[Pack demo playbook](../integrations/pack-demo-playbook.md)** — 20 copy-pasteable prompts that exercise every shipped capability pack against a live install. Use it after the install steps to verify your environment.
 
 ## What goes here
 

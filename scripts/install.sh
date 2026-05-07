@@ -382,6 +382,23 @@ run_build() {
 # compose up
 # ────────────────────────────────────────────────────────────────────────
 
+compose_pull() {
+  # Pre-pull all images that aren't built locally, so `compose up` doesn't
+  # block on an unattended download (or worse: come up healthy while the
+  # sidecar image is still pulling in the background, leaving the first
+  # session hanging on a 30 s timeout). `--ignore-buildable` skips images
+  # whose service has a `build:` clause — those are produced by
+  # run_build / make sidecar-build above.
+  step "Pre-pulling published images"
+  info "this fetches images like dxflrs/garage and helmdeck-sidecar before stack-up..."
+  if ! docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" pull --ignore-buildable; then
+    fail "image pull failed — check network reachability to docker.io and ghcr.io"
+    fail "if behind a corporate proxy, set HTTPS_PROXY before re-running"
+    exit 4
+  fi
+  ok "images ready"
+}
+
 compose_up() {
   step "Starting Compose stack"
   info "this brings up the control plane, the Garage object store, and the garage-init bootstrap..."
@@ -454,6 +471,17 @@ print_summary() {
   printf "  %s(save the password now — it's only printed here once.%s\n" "${C_DIM}" "${C_RESET}"
   printf "  %s the same value lives in %s, mode 0600.)%s\n" "${C_DIM}" "${ENV_FILE}" "${C_RESET}"
   echo
+  printf "  %sNext steps in the UI:%s\n" "${C_BOLD}" "${C_RESET}"
+  printf "    Add an AI provider key:  %s%s/admin/ai-providers%s\n" "${C_CYAN}" "${URL}" "${C_RESET}"
+  printf "    Connect an MCP client:   %s%s/admin/connect%s\n" "${C_CYAN}" "${URL}" "${C_RESET}"
+  printf "    Add a vault credential:  %s%s/admin/vault%s\n" "${C_CYAN}" "${URL}" "${C_RESET}"
+  echo
+  printf "  %sFirst session note:%s\n" "${C_BOLD}" "${C_RESET}"
+  printf "    The browser sidecar image was just built. Your first session create call\n"
+  printf "    will be quick. If you ever see a 502 on first session, the sidecar image\n"
+  printf "    is still warming — wait ~30s and retry. See:\n"
+  printf "      %sdocs/howto/troubleshoot-install.md%s\n" "${C_DIM}" "${C_RESET}"
+  echo
   printf "  %sUseful commands:%s\n" "${C_BOLD}" "${C_RESET}"
   printf "    Tail logs:   %sdocker compose -f %s logs -f control-plane%s\n" "${C_DIM}" "${COMPOSE_FILE}" "${C_RESET}"
   printf "    Tear down:   %sdocker compose -f %s down -v%s\n" "${C_DIM}" "${COMPOSE_FILE}" "${C_RESET}"
@@ -481,6 +509,7 @@ main() {
     info "skipping build (--no-build)"
   fi
 
+  compose_pull
   compose_up
   wait_for_health
   setup_github_token
