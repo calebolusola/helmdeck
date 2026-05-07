@@ -39,3 +39,4 @@ dist/
 !web/dist/
 !web/dist/index.html
 
+.vercel

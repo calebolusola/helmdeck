@@ -5,7 +5,7 @@ Drop-in source for `gh issue create` and GitHub Projects. Each phase = one miles
 ---
 
 ## Milestone: `v0.1 — Core Infrastructure` (Phase 1)
-**Target:** Week 4 · **Exit:** `make smoke` green end-to-end on Compose
+**Target:** Week 4 · **Exit:** `make smoke` green end-to-end on Compose · **Ships in:** [v0.1.0](RELEASES.md#v010--core-infrastructure-week-4)
 
 - [x] **T101** Bootstrap Go module + repo layout (`cmd/control-plane`, `cmd/helmdeck-mcp`, `internal/`)
 - [x] **T102** goreleaser + GitHub Actions: build matrix, cosign, distroless image to ghcr.io
@@ -22,7 +22,7 @@ Drop-in source for `gh issue create` and GitHub Projects. Each phase = one miles
 ---
 
 ## Milestone: `v0.2 — AI Gateway & Pack Substrate` (Phase 2)
-**Target:** Week 8 · **Exit:** ≥90% weak-model success on `browser.screenshot_url` + `web.scrape_spa`
+**Target:** Week 8 · **Exit:** ≥90% weak-model success on `browser.screenshot_url` + `web.scrape_spa` against the **MiniMax-M2.7 + Llama 3.2 7B** cohort · **Ships in:** [v0.2.0](RELEASES.md#v020--ai-gateway--first-packs-week-8)
 
 - [x] **T201** OpenAI-compatible `/v1/chat/completions` + `/v1/models`
 - [x] **T202** Provider adapters: Anthropic, Gemini, OpenAI, Ollama, Deepseek
@@ -44,7 +44,7 @@ Drop-in source for `gh issue create` and GitHub Projects. Each phase = one miles
 ---
 
 ## Milestone: `v0.3 — MCP Bridge & Client Integrations` (Phase 3)
-**Target:** Week 10 · **Exit:** four-client smoke matrix green in CI
+**Target:** Week 10 · **Exit:** four-client smoke matrix green in CI · **Ships in:** [v0.3.0](RELEASES.md#v030--bridge--client-integrations-week-10)
 
 - [x] **T301** MCP server registry CRUD + transport adapters
 - [x] **T302** Built-in MCP server exposing all packs
@@ -60,7 +60,7 @@ Drop-in source for `gh issue create` and GitHub Projects. Each phase = one miles
 ---
 
 ## Milestone: `v0.4 — Desktop & Vision` (Phase 4)
-**Target:** Week 13 · **Exit:** vault-backed `web.login_and_fetch` + vision demo on Canvas page
+**Target:** Week 13 · **Exit:** vault-backed `web.login_and_fetch` + vision demo on Canvas page · **Ships in:** [v0.4.0](RELEASES.md#v040--desktop--vision-week-13)
 
 - [x] **T401** Desktop Actions REST API (xdotool/scrot wrappers)
 - [x] **T402** Built-in pack: `desktop.run_app_and_screenshot`
@@ -76,7 +76,7 @@ Drop-in source for `gh issue create` and GitHub Projects. Each phase = one miles
 ---
 
 ## Milestone: `v0.5 — Vault, Repo Packs & Hardening` (Phase 5)
-**Target:** Week 16 · **Exit:** `repo.fetch` against private GitHub via vault SSH key; OTel traces in Langfuse
+**Target:** Week 16 · **Exit:** `repo.fetch` against private GitHub via vault SSH key; OTel traces in Langfuse · **Ships in:** [v0.5.0](RELEASES.md#v050--vault--repo-packs-week-16)
 
 - [x] **T501** Credential Vault (AES-256-GCM + ACL + usage log)
 - [x] **T502** Credential types: login, cookies, API key, OAuth, SSH/git
@@ -95,7 +95,7 @@ Drop-in source for `gh issue create` and GitHub Projects. Each phase = one miles
 ---
 
 ## Milestone: `v0.5.5 — Code Edit Loop` (Phase 5.5)
-**Target:** alongside Phase 5 · **Exit:** every client in `docs/integrations/` has a setup guide, and at least Claude Code is marked ✅ tested against the Phase 5.5 code-edit loop (`repo.fetch` → `fs.*` → `cmd.run` → `git.commit` → `repo.push`)
+**Target:** alongside Phase 5 · **Exit:** every client in `docs/integrations/` has a setup guide, and at least Claude Code is marked ✅ tested against the Phase 5.5 code-edit loop (`repo.fetch` → `fs.*` → `cmd.run` → `git.commit` → `repo.push`) · **Ships in:** [v0.5.0 / v0.5.1](RELEASES.md#v050--vault--repo-packs-week-16) (interleaved)
 
 - [x] **T550** Built-in pack: `fs.read` (read file from clone)
 - [x] **T551** Built-in pack: `fs.write` (write file to clone)
@@ -118,7 +118,7 @@ Drop-in source for `gh issue create` and GitHub Projects. Each phase = one miles
 ---
 
 ## Milestone: `v0.6 — Management UI` (Phase 6)
-**Target:** Week 20 · **Exit:** every read-only Phase 6 panel ships against a real backend; pack *authoring* (schema editor + handler runtime + publish) is deferred to Phase 8 alongside T801 (WASM Executor) — see T608 below
+**Target:** Week 20 · **Exit:** every read-only Phase 6 panel ships against a real backend; pack *authoring* (schema editor + handler runtime + publish) is deferred to Phase 8 alongside T801 (WASM Executor) — see T608 below · **Ships in:** [v0.6.0](RELEASES.md#v060--management-ui-week-20)
 
 - [x] **T601** React/Tailwind/shadcn shell + JWT login
 - [x] **T602** Dashboard panel *(stat cards + status table; Recharts memory chart in T602a)*
@@ -148,7 +148,7 @@ Drop-in source for `gh issue create` and GitHub Projects. Each phase = one miles
 ---
 
 ## Milestone: `v1.0 — Kubernetes & GA` (Phase 7)
-**Target:** Week 22 · **Exit:** Helm install on fresh GKE/EKS passes smoke; security audit clean
+**Target:** Week 22 · **Exit:** Helm install on fresh GKE/EKS passes smoke; security audit clean · **Ships in:** [v1.0.0](RELEASES.md#v100--kubernetes--ga-week-22)
 
 - [ ] **T701** `client-go` SessionRuntime backend
 - [ ] **T702** Helm chart `charts/baas-platform/`
@@ -168,8 +168,8 @@ Drop-in source for `gh issue create` and GitHub Projects. Each phase = one miles
 
 ---
 
-## Milestone: `v0.8 — MCP Server Hosting & Pack Evolution` (Phase 6.5) ✅
-**Status:** Complete. v0.8.0 tagged. 36 packs ship. `scripts/validate-phase-6-5.sh` is the validation harness.
+## Milestone: `v0.8 — MCP Server Hosting & Pack Evolution` (Phase 6.5) ✅ {#milestone-v08}
+**Status:** Complete. v0.8.0 tagged. 36 packs ship. `scripts/validate-phase-6-5.sh` is the validation harness. · **Ships in:** [v0.8.0](RELEASES.md#v080)
 
 This phase validated the "host, don't rebuild" architecture from ADR 035 and added native computer-use tool routing (T807f), narrated video generation (T406), and two composite packs (research.deep, content.ground). The container topology: Playwright MCP in the sidecar (shares Chromium), Firecrawl + Docling as separate optional compose services, ElevenLabs as a cloud TTS API with vault-stored key.
 

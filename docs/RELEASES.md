@@ -31,6 +31,8 @@ Helmdeck ships its agent instructions as a native **OpenClaw Skill** at `skills/
 ## v0.1.0 — Core Infrastructure (Week 4)
 **Theme:** "A browser session is one REST call away."
 
+> **Milestone:** [v0.1 — Core Infrastructure (Phase 1)](MILESTONES.md#milestone-v01--core-infrastructure-phase-1) · **Tasks:** [Phase 1](TASKS.md#phase-1--core-infrastructure-weeks-14)
+
 ### Ships
 - Go control plane binary (Gin + chromedp + Docker SDK)
 - Browser sidecar image with Chromium, Marp, Tesseract, ffmpeg, xdotool, Xvfb, XFCE4, noVNC
@@ -51,6 +53,8 @@ Internal only. Tag a pre-release on GitHub.
 
 ## v0.2.0 — AI Gateway & First Packs (Week 8)
 **Theme:** "Capability Packs are real, and weak models can drive them."
+
+> **Milestone:** [v0.2 — AI Gateway & Pack Substrate (Phase 2)](MILESTONES.md#milestone-v02--ai-gateway--pack-substrate-phase-2) · **Tasks:** [Phase 2](TASKS.md#phase-2--ai-gateway--capability-pack-substrate-weeks-58)
 
 ### Ships
 - OpenAI-compatible `/v1/chat/completions` and `/v1/models`
@@ -75,6 +79,8 @@ Design partners. Public alpha tag.
 ## v0.3.0 — Bridge & Client Integrations (Week 10)
 **Theme:** "Register one MCP server, get every helmdeck pack."
 
+> **Milestone:** [v0.3 — MCP Bridge & Client Integrations (Phase 3)](MILESTONES.md#milestone-v03--mcp-bridge--client-integrations-phase-3) · **Tasks:** [Phase 3](TASKS.md#phase-3--mcp-registry--bridge--client-integrations-weeks-910)
+
 ### Ships
 - MCP registry with stdio/SSE/WebSocket transports
 - Built-in MCP server auto-derived from the pack catalog
@@ -94,6 +100,8 @@ Public beta. First "helmdeck works with my agent" demo video.
 ## v0.4.0 — Desktop & Vision (Week 13)
 **Theme:** "Beyond the DOM."
 
+> **Milestone:** [v0.4 — Desktop & Vision (Phase 4)](MILESTONES.md#milestone-v04--desktop--vision-phase-4) · **Tasks:** [Phase 4](TASKS.md#phase-4--desktop-actions--vision-mode-weeks-1113)
+
 ### Ships
 - Desktop Actions REST API (xdotool/scrot)
 - `desktop.run_app_and_screenshot`, `doc.ocr`
@@ -108,6 +116,8 @@ Public beta continues.
 
 ## v0.5.0 — Vault & Repo Packs (Week 16)
 **Theme:** "Agents stop holding secrets."
+
+> **Milestone:** [v0.5 — Vault, Repo Packs & Hardening (Phase 5)](MILESTONES.md#milestone-v05--vault-repo-packs--hardening-phase-5) · also covers [v0.5.5 — Code Edit Loop](MILESTONES.md#milestone-v055--code-edit-loop-phase-55) · **Tasks:** [Phase 5](TASKS.md#phase-5--credential-vault--repo-packs--hardening-weeks-1416), [Phase 5.5](TASKS.md#phase-55--code-edit-loop-interleaved-with-phase-5)
 
 ### Ships
 - AES-256-GCM Credential Vault with placeholder-token injection
@@ -129,6 +139,8 @@ Production design partners. Hardening RC.
 ## v0.6.0 — Management UI (Week 20)
 **Theme:** "Operators close the weak-model gap themselves."
 
+> **Milestone:** [v0.6 — Management UI (Phase 6)](MILESTONES.md#milestone-v06--management-ui-phase-6) · **Tasks:** [Phase 6](TASKS.md#phase-6--management-ui-weeks-1720)
+
 ### Ships
 - React/Tailwind/shadcn UI embedded in Go binary
 - All read-only panels: Dashboard, Sessions, AI Providers, MCP Registry, **Capability Packs**, Security Policies, Credential Vault, Audit Logs, Connect Clients
@@ -143,8 +155,40 @@ Public beta — full self-service for everything except authoring custom packs.
 
 ---
 
+## v0.8.0 — MCP Server Hosting & Pack Evolution (Phase 6.5) — ✅ Shipped 2026-04-12 {#v080}
+
+**Theme:** "Host third-party agent infrastructure instead of rebuilding it."
+
+> **Milestone:** [v0.8 — MCP Server Hosting & Pack Evolution (Phase 6.5)](MILESTONES.md#milestone-v08) ✅
+> **Tasks:** Phase 6.5 — see [`docs/TASKS.md`](TASKS.md#phase-65--mcp-server-hosting--pack-evolution)
+
+### Ships (36 packs total at the v0.8.0 cutover)
+
+- **Playwright MCP bundled in the browser sidecar** ([T807a](TASKS.md#phase-65--mcp-server-hosting--pack-evolution)) — auto-attached to the running Chromium via CDP; one browser, one cookie jar, shared state with chromedp packs.
+- **Firecrawl as an optional compose overlay** ([T807b](TASKS.md#phase-65--mcp-server-hosting--pack-evolution)) — `compose.firecrawl.yml`; new `web.scrape` pack returns clean markdown.
+- **Docling as an optional compose overlay** ([T807c](TASKS.md#phase-65--mcp-server-hosting--pack-evolution)) — `compose.docling.yml`; new `doc.parse` pack supersedes `doc.ocr` for layout/tables.
+- **Native computer-use tool routing** ([T807f](TASKS.md#phase-65--mcp-server-hosting--pack-evolution), supersedes T807d) — Anthropic / OpenAI / Gemini schemas wired through the gateway; eight new desktop REST primitives; `vision.StepNative` cross-provider executor; `EventComputerUse` audit + replay.
+- **`web.test`** ([T807e](TASKS.md#phase-65--mcp-server-hosting--pack-evolution)) — natural-language browser testing via Playwright MCP accessibility tree; egress-guarded mid-test navigations.
+- **`research.deep`** ([T622](TASKS.md#phase-65--mcp-server-hosting--pack-evolution)) — Firecrawl-backed research composite (search + per-source scrape + LLM synthesis with inline citations).
+- **`repo.fetch` context envelope + `repo.map`** ([T622a](TASKS.md#phase-65--mcp-server-hosting--pack-evolution)) — agents orient on the first turn without chaining `fs.list`/`fs.read`; ctags-derived structural symbol map under a token budget.
+- **`content.ground`** ([T623](TASKS.md#phase-65--mcp-server-hosting--pack-evolution)) — link grounding for blog posts; verbatim-substring patching skips hallucinated claims.
+- **`slides.narrate`** ([T406](TASKS.md#phase-65--mcp-server-hosting--pack-evolution), moved from Phase 4) — narrated MP4 from Marp decks via ElevenLabs TTS + ffmpeg + LLM-generated YouTube metadata.
+- **Provider-adapter community contributions** — Groq (PR #45) and Mistral (PR #47) adapters land alongside ([T202a](TASKS.md#phase-6--management-ui-weeks-1720)).
+
+### Hard exit gate (met)
+
+`scripts/validate-phase-6-5.sh` passes against a fresh stack including the Firecrawl + Docling overlays; native computer-use round-trip works against at least one frontier provider; 36 packs total.
+
+### Audience
+
+Public beta continues. Tag `v0.8.0` (shipped 2026-04-12). Sets up Phase 7 (Kubernetes & GA) as the next gate.
+
+---
+
 ## v1.0.0 — Kubernetes & GA (Week 22)
 **Theme:** "Production."
+
+> **Milestone:** [v1.0 — Kubernetes & GA (Phase 7)](MILESTONES.md#milestone-v10--kubernetes--ga-phase-7) · **Tasks:** [Phase 7](TASKS.md#phase-7--kubernetes--helm--production-hardening-weeks-2122)
 
 ### Ships
 - `client-go` `SessionRuntime` backend
