@@ -46,11 +46,25 @@ The full first-time wiring is six steps. Sections 1–6 below walk through them;
 | 1 | `make install` (helmdeck stack up) | `scripts/install.sh` |
 | 2 | `git clone https://github.com/openclaw/openclaw.git ~/openclaw` + `./scripts/docker/setup.sh` (OpenClaw stack up) | OpenClaw repo |
 | 3 | Mint a helmdeck JWT for OpenClaw to send as MCP `Authorization` | curl against `/api/v1/auth/login` |
-| 4 | **Authenticate OpenClaw with an LLM provider** — interactive, one-time | `docker compose -f /root/openclaw/docker-compose.yml run --rm openclaw-cli models auth login openrouter` (paste API key when prompted) |
+| 4 | **Authenticate OpenClaw with an LLM provider** — interactive, one-time | `docker compose -f /root/openclaw/docker-compose.yml run --rm openclaw-cli models auth login openrouter` (paste API key when prompted; **single line** — see note below) |
 | 5 | Pin a tool-capable model + wire MCP config + install SKILL.md + JWT refresh + network bridge | `scripts/configure-openclaw.sh --model openrouter/<provider>/<model> --seed-identity` (helmdeck repo) |
 | 6 | Walk the Phase 5.5 code-edit loop in the chat UI to confirm | http://localhost:18789 |
 
 > ⚠️ **Steps 4 and 5 are separate.** `configure-openclaw.sh` (step 5) sets the model OpenClaw will use and wires every piece of helmdeck integration — but it can't paste an API key for you. Step 4 stores the OpenRouter / Bedrock / etc. API key under `~/.openclaw/`; step 5 pins which model OpenClaw asks that provider for. Helmdeck's `HELMDECK_OPENROUTER_API_KEY` in `.env.local` is **not** the same thing — that wires helmdeck's *own* gateway, not OpenClaw's chat-UI loop. The `configure-openclaw.sh` script now probes for the missing provider auth and fails fast with the exact command to run if step 4 was skipped.
+
+> 💡 **Copy-paste step 4 as a single line** to avoid the trailing-whitespace-after-`\` shell trap (which silently splits the command and runs `models auth login openrouter` as a standalone shell command):
+>
+> ```
+> docker compose -f /root/openclaw/docker-compose.yml run --rm openclaw-cli models auth login openrouter
+> ```
+>
+> Verify auth landed with:
+>
+> ```
+> docker compose -f /root/openclaw/docker-compose.yml run --rm openclaw-cli models auth list
+> ```
+>
+> You should see the provider (e.g. `openrouter`) in the output.
 
 ## 1. Install helmdeck
 
