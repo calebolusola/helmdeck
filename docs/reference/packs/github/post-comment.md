@@ -37,7 +37,7 @@ Stateless.
 
 > Use helmdeck__github-post_comment against repo "tosin2013/helmdeck-pack-doc-fixtures", issue_number 1, body="Demo comment captured during pack doc work.", credential=github-token. Tell me the comment id and url.
 
-**Tool call** (1 call, no failures — call/result pair was emitted but the transcript-extractor missed the `toolCall` event):
+**Tool call** (1 call, no failures):
 
 ```json
 {
@@ -51,13 +51,19 @@ Stateless.
 }
 ```
 
+**Pack response** (truncated):
+
+```json
+{"pack":"github.post_comment","version":"v1","output":{"url":"https://api.github.com/repos/tosin2013/helmdeck-pack-doc-fixtures/issues/comments/4406991866","html_url":"https://github.com/tosin2013/helmdeck-pack-doc-fixtures/issues/1#issuecomment-4406991866","issue_url":"https://api.github.com/repos/tosin2013/helmdeck-pack-doc-fixtures/issues/1","id":4406991866,"node_id":"IC_kwDOSX1U_c8AAAABBq1b-g","user":{"login":"tosin2013","id":1975599,"node_id":"MDQ6VXNlcjE5NzU1OTk=","avatar_url":"https://avatars.githubusercontent.com/u/1975599?u=979f34af430adca7132e3bf2fd67100bae6c8979\u0026v=4","gravatar_id":"","url":"https://api.github.com/users/tosin2013","html_url":"https://github.com/tosin2013","followers_url":"https://api.github.com/users/tosin2013/followers","following_url":"https://api.github.c
+  ...[truncated]
+```
+
 **Agent's final reply**:
 
-> - **Comment ID:** 4406720872  
-> - **URL:** <https://github.com/tosin2013/helmdeck-pack-doc-fixtures/issues/1#issuecomment-4406720872>
+> Comment ID: 4406991866  
+> URL: https://github.com/tosin2013/helmdeck-pack-doc-fixtures/issues/1#issuecomment-4406991866
 
-*Verified via OpenClaw 2026.5.6 + helmdeck v0.9.0-dev + `openrouter/openai/gpt-oss-120b` on 2026-05-07 (cost: $0.1562).*
-
+*Verified via OpenClaw 2026.5.6 + helmdeck v0.9.0-dev + `openrouter/openai/gpt-oss-120b` on 2026-05-07 (cost: $0.0013).*
 ## Developer reference (`curl`)
 
 ```bash

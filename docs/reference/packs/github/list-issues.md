@@ -37,9 +37,9 @@ Stateless — no session needed. Public-repo reads work without a credential (60
 
 **Prompt** (sent in OpenClaw chat UI / `openclaw-cli agent`):
 
-> Use helmdeck__github-list_issues against repo "tosin2013/helmdeck-pack-doc-fixtures" with state=open and credential=github-token. Tell me the count and the titles (or "no issues yet" if empty).
+> Use the helmdeck__github-list_issues tool against repo "tosin2013/helmdeck-pack-doc-fixtures" with state=open and credential=github-token. Tell me the count and the titles.
 
-**Tool call** (1 call, no failures — call/result pair was emitted but the transcript-extractor missed the `toolCall` event):
+**Tool call** (1 call, no failures):
 
 ```json
 {
@@ -52,14 +52,21 @@ Stateless — no session needed. Public-repo reads work without a credential (60
 }
 ```
 
+**Pack response** (truncated):
+
+```json
+{"pack":"github.list_issues","version":"v1","output":{"count":2,"issues":[{"url":"https://api.github.com/repos/tosin2013/helmdeck-pack-doc-fixtures/issues/2","repository_url":"https://api.github.com/repos/tosin2013/helmdeck-pack-doc-fixtures","labels_url":"https://api.github.com/repos/tosin2013/helmdeck-pack-doc-fixtures/issues/2/labels{/name}","comments_url":"https://api.github.com/repos/tosin2013/helmdeck-pack-doc-fixtures/issues/2/comments","events_url":"https://api.github.com/repos/tosin2013/helmdeck-pack-doc-fixtures/issues/2/events","html_url":"https://github.com/tosin2013/helmdeck-pack-doc-fixtures/issues/2","id":4406682427,"node_id":"I_kwDOSX1U_c8AAAABBqijOw","number":2,"title":"Demo issue from helmdeck pack capture","user":{"login":"tosin2013","id":1975599,"node_id":"MDQ6VXNlcjE5N
+  ...[truncated]
+```
+
 **Agent's final reply**:
 
-> - **Open issue count:** 1  
-> - **Titles:**  
->   1. “Demo issue from helmdeck pack capture”
+> The repository has **2 open issues**:
+> 
+> 1. **Demo issue from helmdeck pack capture** (issue #2)  
+> 2. **Demo issue from helmdeck pack capture** (issue #1)
 
-*Verified via OpenClaw 2026.5.6 + helmdeck v0.9.0-dev + `openrouter/openai/gpt-oss-120b` on 2026-05-07 (cost: $0.1448).*
-
+*Verified via OpenClaw 2026.5.6 + helmdeck v0.9.0-dev + `openrouter/openai/gpt-oss-120b` on 2026-05-07 (cost: $0.0013).*
 ## Developer reference (`curl`)
 
 ```bash
