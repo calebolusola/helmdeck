@@ -37,6 +37,37 @@ OpenClaw is **Topology A** — both OpenClaw and helmdeck run as docker compose 
 - Helmdeck cloned at `/root/helmdeck` (or wherever)
 - ≥ 4 GB RAM, ≥ 2 CPUs (the install script preflight enforces this)
 
+## Setup at a glance
+
+The full first-time wiring is six steps. Sections 1–6 below walk through them; this is the "are we sure we got everything?" cheat-sheet.
+
+| # | Step | Where it lives |
+|---|---|---|
+| 1 | `make install` (helmdeck stack up) | `scripts/install.sh` |
+| 2 | `git clone https://github.com/openclaw/openclaw.git ~/openclaw` + `./scripts/docker/setup.sh` (OpenClaw stack up) | OpenClaw repo |
+| 3 | Mint a helmdeck JWT for OpenClaw to send as MCP `Authorization` | curl against `/api/v1/auth/login` |
+| 4 | **Authenticate OpenClaw with an LLM provider** — interactive, one-time | `docker compose -f /root/openclaw/docker-compose.yml run --rm -it openclaw-cli models auth login --provider openrouter` (paste API key when prompted; **single line, `-it` required** — see note below) |
+| 5 | Pin a tool-capable model + wire MCP config + install SKILL.md + JWT refresh + network bridge | `scripts/configure-openclaw.sh --model openrouter/<provider>/<model> --seed-identity` (helmdeck repo) |
+| 6 | Walk the Phase 5.5 code-edit loop in the chat UI to confirm | http://localhost:18789 |
+
+> ⚠️ **Steps 4 and 5 are separate.** `configure-openclaw.sh` (step 5) sets the model OpenClaw will use and wires every piece of helmdeck integration — but it can't paste an API key for you. Step 4 stores the OpenRouter / Bedrock / etc. API key under `~/.openclaw/`; step 5 pins which model OpenClaw asks that provider for. Helmdeck's `HELMDECK_OPENROUTER_API_KEY` in `.env.local` is **not** the same thing — that wires helmdeck's *own* gateway, not OpenClaw's chat-UI loop. The `configure-openclaw.sh` script now probes for the missing provider auth and fails fast with the exact command to run if step 4 was skipped.
+
+> 💡 **Copy-paste step 4 as a single line, with `-it`** to avoid the trailing-whitespace-after-`\` shell trap *and* the no-TTY error (`Error: models auth login requires an interactive TTY`):
+>
+> ```
+> docker compose -f /root/openclaw/docker-compose.yml run --rm -it openclaw-cli models auth login --provider openrouter
+> ```
+>
+> Verify auth landed with:
+>
+> ```
+> docker compose -f /root/openclaw/docker-compose.yml run --rm -T openclaw-cli models auth list
+> ```
+>
+> You should see your provider's profile in the *Profiles* block (e.g. `openrouter`). If it shows `Profiles: (none)`, the auth wizard didn't write — re-run the login command and watch for any TUI errors. The `-T` on the verify command suppresses the TUI (read-only listing doesn't need a TTY).
+>
+> ⚠️ **OpenClaw 2026.5.6 API change**: the `login` subcommand now takes `--provider <id>` as a flag rather than as a positional argument. Older docs (and the helmdeck `validate-openclaw.sh` script) still show the bare positional form — those are stale and need updates.
+
 ## 1. Install helmdeck
 
 ```bash
@@ -135,7 +166,7 @@ OpenClaw needs its own LLM credentials. The easiest path is OpenRouter (which is
 
 ```bash
 docker compose -f /root/openclaw/docker-compose.yml run --rm openclaw-cli \
-  models auth login openrouter
+  models auth login --provider openrouter
 ```
 
 Follow the prompts to paste your OpenRouter API key. Then set the active model:
@@ -146,6 +177,26 @@ docker compose -f /root/openclaw/docker-compose.yml run --rm openclaw-cli \
 ```
 
 > **Helmdeck-as-LLM-gateway path:** OpenClaw's docs do not clearly document a custom OpenAI-compatible base URL escape hatch as of v0.6.0 of helmdeck. If we confirm via inspection of `models.json` that an arbitrary `base_url` works, this section will gain a "Route OpenClaw's LLM through helmdeck" subsection that points OpenClaw at `http://helmdeck-control-plane:3000/v1/chat/completions` so the T607 success-rate panel lights up from OpenClaw runs. Until then, OpenClaw uses its OpenRouter key directly and helmdeck only sees the MCP tool calls.
+
+## 5b. Confirm the catalog is visible from OpenClaw
+
+Before opening the chat UI, smoke-test the MCP handshake from the CLI side. This proves the JWT works, the `authorization` header case is right, the network bridge is wired, and the model can see the tool catalog:
+
+```bash
+docker compose -f /root/openclaw/docker-compose.yml run --rm -T openclaw-cli agent \
+  --agent main \
+  --json \
+  --message "List every MCP tool whose name starts with helmdeck__. Just the names, one per line."
+```
+
+You should see the assistant reply listing **39 `helmdeck__*` tools** — the 36 capability packs plus 3 async wrappers (`helmdeck__pack-start`, `helmdeck__pack-status`, `helmdeck__pack-result`).
+
+> 🧩 **Naming convention**: MCP tool names can't contain dots, so helmdeck's `browser.screenshot_url` becomes `helmdeck__browser-screenshot_url` over MCP. The mapping is mechanical — `<family>.<action>` → `helmdeck__<family>-<action>`. Pack reference pages list both forms.
+
+If the response says "I don't have access to MCP tools" or returns 0 helmdeck tools:
+- Check `docker logs helmdeck-control-plane | grep mcp/sse` — should show recent `GET /api/v1/mcp/sse` entries.
+- Check the JWT in OpenClaw's MCP config didn't expire (default 7-day window from `configure-openclaw.sh`); rotate with `./scripts/configure-openclaw.sh --rotate-jwt`.
+- Confirm the lowercase `authorization` header survived any manual edits to `~/.openclaw/openclaw.json` (issue #1 workaround — Pascal-cased `Authorization` 401's against OpenClaw 2026.4+).
 
 ## 6. Walk the Phase 5.5 code-edit loop
 
