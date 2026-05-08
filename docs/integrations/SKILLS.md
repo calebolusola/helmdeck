@@ -10,11 +10,74 @@ changefreq: weekly
 
 **Load this file into your MCP client's system prompt or agent config.** It teaches the LLM how to use helmdeck's 36 capability packs correctly, retry transient errors, diagnose failures, chain multi-step workflows, and file bug reports.
 
-**How to load:**
-- **Claude Code**: This is referenced from `CLAUDE.md` at the repo root (auto-loaded)
-- **OpenClaw**: Paste into your agent's system prompt or custom instructions
-- **Claude Desktop / Gemini CLI**: Add to the system message in your MCP config
-- **Any other client**: Include this text as context before the first tool call
+The intent is the same across every client: this file's content must be in the model's context **before** it sees the user's first prompt. The mechanism varies — pick the subsection that matches your client.
+
+### OpenClaw (validated end-to-end)
+
+If you ran `scripts/configure-openclaw.sh --seed-identity` from a helmdeck checkout, this file is already stamped into `~/.openclaw/skills/helmdeck/SKILL.md` inside the OpenClaw container and the agent loads it automatically every turn. **Nothing else to do.**
+
+To refresh after a SKILLS.md edit (e.g. after pulling a new helmdeck release), re-run the script — it idempotently overwrites the stamped copy:
+
+```bash
+cd /path/to/helmdeck && ./scripts/configure-openclaw.sh
+```
+
+Verify: in the OpenClaw chat UI, ask *"what helmdeck packs do you know about?"* — the model should rattle off the catalog. If it doesn't, see [`docs/integrations/openclaw.md`](./openclaw.md) §"Load the agent skills".
+
+### Claude Code
+
+Claude Code auto-loads a `CLAUDE.md` from the working directory on every invocation. Drop this file's content into one:
+
+```bash
+# From the project where you'll run claude:
+curl -fsSL https://raw.githubusercontent.com/tosin2013/helmdeck/main/docs/integrations/SKILLS.md \
+  > CLAUDE.md
+```
+
+Or for a project-wide skill that applies to every helmdeck-using repo, see Claude Code's `--append-system-prompt` flag in [Claude Code's docs](https://code.claude.com/docs/en/setup) — point it at a checked-out copy of this file.
+
+Verify: run `claude` in that directory and ask *"what helmdeck packs do you know about?"* — the model should list them.
+
+### Claude Desktop
+
+Claude Desktop has no system-prompt field in `claude_desktop_config.json` — it's intentionally a per-conversation setting via the **Projects** feature in the GUI:
+
+1. Create a new Project (or open an existing helmdeck-related one).
+2. Paste this entire file into the project's **Custom Instructions**.
+3. Attach the helmdeck MCP server (see [`claude-desktop.md`](./claude-desktop.md)).
+4. Start every helmdeck-related conversation from that project.
+
+Verify: ask the model what packs it can call — should match the catalog above.
+
+### Gemini CLI
+
+Gemini CLI auto-loads a `GEMINI.md` from the working directory or `~/.gemini/GEMINI.md` globally. Either works:
+
+```bash
+# Project-scoped:
+curl -fsSL https://raw.githubusercontent.com/tosin2013/helmdeck/main/docs/integrations/SKILLS.md \
+  > GEMINI.md
+
+# Or global:
+mkdir -p ~/.gemini && curl -fsSL https://raw.githubusercontent.com/tosin2013/helmdeck/main/docs/integrations/SKILLS.md \
+  > ~/.gemini/GEMINI.md
+```
+
+Source: [Gemini CLI memory/context docs](https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/memory.md). Verify the load with `gemini` and the same "what packs do you know about?" question.
+
+### Hermes Agent
+
+Hermes' `~/.hermes/config.yaml` accepts a `system_prompt` (or `system_prompt_file`) field. Pointing it at a checked-out copy of SKILLS.md keeps it in sync with helmdeck pulls:
+
+```yaml
+system_prompt_file: /path/to/helmdeck/docs/integrations/SKILLS.md
+```
+
+Source: [Hermes configuration docs](https://hermes-agent.nousresearch.com/docs/user-guide/configuration/). Verify with `hermes "what helmdeck packs do you know about?"`.
+
+### Any other MCP client
+
+Find the client's "system prompt" / "custom instructions" / "agent context" field and paste the contents of this file into it. If the client genuinely has no system-prompt surface, prepend this file's contents to the user's first message in every helmdeck-related conversation. The functional outcome is the same.
 
 ---
 
@@ -322,7 +385,66 @@ self-inflicted failure mode in chained workflows.
 
 ---
 
-## Repo discovery pattern
+## Freshness contract — RE-CALL DON'T RECALL FOR STATEFUL PACKS
+
+> **The rule, in one sentence:** when the user asks about external state
+> (a GitHub repo, a webpage, a clone) on a follow-up turn, **re-call the
+> tool**. Do not answer from your prior turn's memory of the result.
+> Helmdeck's MCP packs are servers — the cached answer in your context
+> is a snapshot; the live answer is what's actually true.
+
+This is the companion rule to the session-chaining contract above. Where
+session chaining is about correctness *within* one chained workflow,
+the freshness contract is about correctness *across* turns when state
+can change between them.
+
+### What's "stateful" for this purpose
+
+| Family | Pack | Why it's stateful |
+|---|---|---|
+| github | `github.list_issues`, `github.list_prs`, `github.search`, `github.create_issue`, `github.post_comment`, `github.create_release` | A new issue, comment, or PR can land between turns — yours or someone else's. |
+| repo | `repo.fetch`, `repo.map`, `repo.push` | Upstream commits move; a fresh push from a colleague invalidates everything you remembered. |
+| web | `web.scrape`, `web.scrape_spa`, `web.test`, `research.deep` | Live web content changes constantly; cached scrapes are stale within seconds for news/feeds, hours for docs. |
+| http | `http.fetch` | Same as web — the response was true at fetch time, not now. |
+| fs / git (session-scoped) | `fs.read`, `fs.list`, `git.diff`, `git.log` | Within the same session, prior `fs.write` / `fs.patch` / `cmd.run` calls (yours or the user's) may have changed the working tree. |
+
+**Stateless** packs — re-calling buys nothing, recall freely:
+
+- `python.run` / `node.run` (deterministic on the same input)
+- `slides.render` / `slides.narrate` (deterministic on the same input)
+- `doc.ocr` / `doc.parse` against the same `source_b64` (input is the bytes)
+- `vision.*` — these are state-changing, so the question doesn't apply
+
+### When recalling is correct
+
+You don't need to re-call every time the user references prior state. **Recalling is correct when:**
+
+- The user is asking *about* the prior result (`"what was that comment id?"`, `"summarize what you found"`).
+- The follow-up turn is a continuation of the same logical action (`"now post a comment on the issue you just listed"` — the listing is fresh enough).
+- You're in a tight loop where state could not have changed (e.g. you ran `fs.write` then `fs.read` against the same file — the write you just did IS the latest state).
+
+### When recalling is wrong
+
+**Re-call** when:
+
+- The user uses words like **"again"**, **"now"**, **"current"**, **"latest"**, **"check if"**, **"is X still"**, **"refresh"**.
+- The user pivots to a different task and then comes back (`"… ok, now back to the issue list — close the open ones"`).
+- More than ~5 minutes have passed in the conversation since the last call to that pack against that target.
+- An external actor (a colleague, a webhook, a CI run) might reasonably have changed the state — be conservative; re-call.
+
+### Failure mode this prevents
+
+A long conversation where the agent answered `github.list_issues` early on (count: 1), then 20 turns later when the user says *"list the issues again"*, the agent skips the tool call and replies with the cached `count: 1` — even though the user (or someone else) has since opened three more.
+
+The user sees a confidently-wrong answer and only learns it's stale after they go check GitHub directly. The agent's memory was correct *at the time*; it just wasn't updated.
+
+### Self-check before responding to the user
+
+Before answering a question that touches stateful packs, ask yourself:
+
+> *Could the answer have changed since my last tool call against this target?*
+
+If yes, **call the tool**. The cost of a re-call is a fraction of a cent; the cost of a stale answer is the user's trust.
 
 When you call `repo.fetch`, the response carries a **context envelope** designed to eliminate the "is the repo empty?" question on the first turn. Use it before reaching for `fs.list` or `fs.read`:
 
