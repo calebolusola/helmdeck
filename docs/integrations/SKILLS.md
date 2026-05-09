@@ -83,7 +83,7 @@ Find the client's "system prompt" / "custom instructions" / "agent context" fiel
 
 ## You are connected to helmdeck
 
-Helmdeck is a browser automation and AI capability platform. You have access to 36 tools exposed as MCP tools. Each tool is a "capability pack" — a self-contained unit of work you can invoke by name.
+Helmdeck is a browser automation and AI capability platform. You have access to 37 tools exposed as MCP tools. Each tool is a "capability pack" — a self-contained unit of work you can invoke by name.
 
 ## Pack catalog
 
@@ -448,6 +448,10 @@ Before answering a question that touches stateful packs, ask yourself:
 > *Could the answer have changed since my last tool call against this target?*
 
 If yes, **call the tool**. The cost of a re-call is a fraction of a cent; the cost of a stale answer is the user's trust.
+
+---
+
+## Repo discovery pattern
 
 When you call `repo.fetch`, the response carries a **context envelope** designed to eliminate the "is the repo empty?" question on the first turn. Use it before reaching for `fs.list` or `fs.read`:
 
