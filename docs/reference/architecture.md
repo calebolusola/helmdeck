@@ -109,7 +109,16 @@ The control plane is the **only** thing your agents talk to. Sidecars don't acce
 
 ---
 
-## 2. Request flow — one pack call, end to end
+## 2. Request flows
+
+Helmdeck has two distinct request flows that architects must understand independently:
+
+- **2.a — Pack call (MCP)** — an agent invokes a capability pack via the MCP server. This is the primary way agents *do work* with helmdeck.
+- **2.b — LLM gateway** — an agent (or a workflow inside helmdeck) calls a chat-completion endpoint that helmdeck proxies to one of several upstream providers, with key injection, fallback, and observability. This is helmdeck-as-OpenAI-compatible-gateway.
+
+Most clients use both flows in the same session — Hermes, for example, routes its LLM calls through 2.b and its tool calls through 2.a, so helmdeck observes both layers.
+
+### 2.a Pack call (MCP) — one pack call, end to end
 
 This is what happens when an agent runs `helmdeck__browser-screenshot_url(url=https://example.com)`.
 
@@ -155,6 +164,70 @@ sequenceDiagram
 - **Step 11 (vault resolve) is gated by per-credential ACLs** — the calling subject must have read access to the named credential. The credential value never leaves the control-plane process.
 - **Step 16 (audit append) is unconditional** — succeeded or failed, every pack call leaves an audit row. This is the source of truth for compliance.
 - **Step 17 (session destroy) is unconditional** — sidecars are *single-use*. There is no shared browser state between calls; no escape from one pack call into another.
+
+### 2.b LLM gateway — one chat completion, end to end
+
+This is what happens when an agent or a helmdeck pack handler issues `POST /v1/chat/completions` with `model: "openrouter/anthropic/claude-haiku-4.5"`. The gateway is OpenAI-compatible — any OpenAI SDK pointed at `http://localhost:3000/v1` works without code changes.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Caller as Caller<br/>(agent / pack handler)
+    participant API as Gateway endpoint<br/>POST /v1/chat/completions
+    participant Auth as JWT middleware
+    participant Router as Provider router<br/>(internal/gateway)
+    participant Chain as Fallback chain<br/>(ADR 005)
+    participant Keys as Encrypted keystore
+    participant Upstream as Upstream provider<br/>(Anthropic / OpenAI / OpenRouter / …)
+    participant PCalls as provider_calls table<br/>(SQLite)
+
+    Caller->>API: POST {model, messages, stream?}<br/>Authorization: Bearer <helmdeck JWT>
+    API->>Auth: verify JWT + scopes (providers:*)
+    Auth-->>API: claims
+    API->>Router: parse model id<br/>"openrouter/anthropic/claude-haiku-4.5"
+    Router->>Router: split → provider="openrouter",<br/>provider_model="anthropic/claude-haiku-4.5"
+    Router->>Chain: try primary
+    Chain->>Keys: read API key for "openrouter"
+    Keys-->>Chain: key (decrypted, in-memory)
+    Chain->>Upstream: forward request<br/>(strip helmdeck JWT, inject provider key)
+
+    alt success path
+        Upstream-->>Chain: 200 OK + (chunks if streaming)
+        Chain-->>API: response
+        API->>PCalls: append row<br/>(provider, model, status=success, latency_ms, tokens)
+        API-->>Caller: chunks (SSE) or final JSON
+    else 429 / timeout / 5xx
+        Upstream-->>Chain: error
+        Chain->>Chain: classify trigger<br/>(rate_limit / timeout / error)
+        Chain->>PCalls: append row<br/>(provider, model, status=fallback, …)
+        Chain->>Chain: select next fallback in chain
+        Chain->>Keys: read API key for fallback provider
+        Chain->>Upstream: retry against fallback provider
+        Upstream-->>Chain: 200 OK
+        Chain-->>API: response
+        API->>PCalls: append final-attempt row
+        API-->>Caller: chunks or final JSON
+    end
+```
+
+**Why this shape matters:**
+
+- **Step 1 carries the helmdeck JWT, never the provider key.** The agent doesn't see the upstream credential; the keystore decrypts it inside the control-plane process and injects it into the outbound request. This is the same trust pattern the vault uses for pack credentials (§4 below).
+- **Step 5 (model-id parse) is the dispatch surface.** Models follow `provider/model` form (e.g. `openrouter/anthropic/claude-haiku-4.5`, `ollama/llama3.1:8b`, `anthropic/claude-sonnet-4.6`). The first segment is the provider; the rest is what gets forwarded to that provider's own `model` field. Mis-routing a model id surfaces as a clean 400, not a 502 from the wrong upstream.
+- **Steps 11–14 are the fallback machinery (ADR 005).** Three triggers are supported in the closed set: `rate_limit` (HTTP 429), `timeout` (request-context deadline hit), `error` (any other non-timeout, non-429 failure including 5xx and provider auth errors). An empty `triggers` slice on a fallback rule means *advance on anything*. Fallbacks are tried in order; the first one that succeeds wins.
+- **Every attempt writes a `provider_calls` row** — the success row, every fallback hop, the final outcome. The **AI Providers → Model Success Rates** UI panel (T607) reads this table; it's how operators see which providers are flapping and whether their fallback rules are firing.
+- **Streaming is end-to-end.** If the caller sets `stream: true`, the gateway forwards SSE chunks from the upstream as they arrive. The fallback machinery only kicks in on connection-level errors before the first chunk; once chunks start flowing, an upstream stream error surfaces to the caller as a partial response rather than a fallback retry (architecturally — you can't un-emit tokens to the caller).
+- **`provider_calls` is the heaviest-write table in the system.** Plan SQLite size accordingly: ~3 rows per chat completion (1 attempt + maybe 2 fallback rows), each row ~200 bytes. A workload doing 10k chat calls/day produces ~30k rows/day, ~10M rows/year — well within SQLite's comfort zone but worth knowing for capacity planning.
+
+**The endpoints helmdeck-as-gateway exposes:**
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /v1/chat/completions` | OpenAI-compatible chat completion (this diagram) |
+| `GET /v1/models` | List the models registered across all configured providers, in `provider/model` form |
+| (provider-specific) | Helmdeck does NOT expose Anthropic-shape, Gemini-shape, or other native APIs; everything normalizes through the OpenAI shape |
+
+If you need provider-native shapes (e.g. Anthropic's `/v1/messages` or Gemini's `generateContent`), point your client directly at the upstream — helmdeck's value here is the unified shape + key injection + fallback + audit, not as an Anthropic/Gemini compatibility shim.
 
 ---
 
