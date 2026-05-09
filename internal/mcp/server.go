@@ -49,6 +49,30 @@ type PackServer struct {
 	// like OpenClaw whose 60s JSON-RPC timeout doesn't reset on
 	// progress notifications).
 	jobs *jobRegistry
+	// sessionLister, when set, backs the helmdeck://sessions resource
+	// (issue #44). Wired by cmd/control-plane/main.go via WithSessions.
+	// When nil, helmdeck://sessions is omitted from resources/list and
+	// resources/read returns -32602.
+	sessionLister SessionLister
+}
+
+// SessionLister is the minimum surface PackServer needs to expose live
+// sessions as an MCP resource. Implemented by session.Runtime in the
+// production wiring; tests use a fake. Keeping the contract narrow
+// avoids dragging session.Runtime's full API into the MCP package.
+type SessionLister interface {
+	List(ctx context.Context) ([]SessionView, error)
+}
+
+// SessionView is the JSON shape we surface via helmdeck://sessions —
+// id, status, image, age. Deliberately omits the raw session.Spec
+// (which carries env-var values that may be sensitive) and the CDP
+// endpoint (which is internal-network-only and useless to MCP clients).
+type SessionView struct {
+	ID        string `json:"id"`
+	Status    string `json:"status"`
+	Image     string `json:"image,omitempty"`
+	CreatedAt string `json:"created_at,omitempty"`
 }
 
 // PackServerOption configures a PackServer at construction time.
@@ -65,6 +89,13 @@ func WithArtifacts(store packs.ArtifactStore) PackServerOption {
 // Set to 0 to disable inline images entirely.
 func WithInlineImageThreshold(n int64) PackServerOption {
 	return func(s *PackServer) { s.inlineImageThreshold = n }
+}
+
+// WithSessions registers a session lister so the server can expose
+// helmdeck://sessions as an MCP resource (issue #44). Optional —
+// without it, only helmdeck://packs is surfaced.
+func WithSessions(s SessionLister) PackServerOption {
+	return func(p *PackServer) { p.sessionLister = s }
 }
 
 // NewPackServer constructs a server bound to a pack registry and
@@ -167,11 +198,13 @@ func (s *PackServer) dispatch(ctx context.Context, req rpcRequest, writeFrame fu
 		// back the one we implement. Strict version negotiation is
 		// T304's job (skew warnings); for now compatibility is best-
 		// effort and the bridge handles client capability gaps.
+		caps := map[string]any{
+			"tools":     map[string]any{},
+			"resources": map[string]any{},
+		}
 		return mk(map[string]any{
 			"protocolVersion": "2024-11-05",
-			"capabilities": map[string]any{
-				"tools": map[string]any{},
-			},
+			"capabilities":    caps,
 			"serverInfo": map[string]any{
 				"name":    "helmdeck",
 				"version": "0.2.0",
@@ -199,6 +232,86 @@ func (s *PackServer) dispatch(ctx context.Context, req rpcRequest, writeFrame fu
 		// when to prefer the async path.
 		tools = append(tools, asyncPackTools()...)
 		return mk(map[string]any{"tools": tools}, nil)
+
+	case "resources/list":
+		// Two read-only resources today (issue #44):
+		//   helmdeck://packs    — the live pack catalog
+		//   helmdeck://sessions — live session list (only if the
+		//                         control plane wired a session lister
+		//                         via WithSessions)
+		resources := []Resource{
+			{
+				URI:         "helmdeck://packs",
+				Name:        "Pack catalog",
+				Description: "All registered helmdeck capability packs with their input schemas. Equivalent to tools/list as a read-only resource.",
+				MimeType:    "application/json",
+			},
+		}
+		if s.sessionLister != nil {
+			resources = append(resources, Resource{
+				URI:         "helmdeck://sessions",
+				Name:        "Live sessions",
+				Description: "All currently-running helmdeck sessions with status, image, and creation timestamp.",
+				MimeType:    "application/json",
+			})
+		}
+		return mk(map[string]any{"resources": resources}, nil)
+
+	case "resources/read":
+		var params struct {
+			URI string `json:"uri"`
+		}
+		if len(req.Params) == 0 {
+			return mk(nil, &rpcError{Code: -32602, Message: "missing params"})
+		}
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			return mk(nil, &rpcError{Code: -32602, Message: "invalid params: " + err.Error()})
+		}
+		switch params.URI {
+		case "helmdeck://packs":
+			infos := s.registry.List()
+			catalog := make([]map[string]any, 0, len(infos))
+			for _, info := range infos {
+				pack, err := s.registry.Get(info.Name, "")
+				if err != nil {
+					continue
+				}
+				schema, _ := schemaToJSON(pack.InputSchema)
+				catalog = append(catalog, map[string]any{
+					"name":         pack.Name,
+					"description":  pack.Description,
+					"input_schema": json.RawMessage(schema),
+				})
+			}
+			body, err := json.Marshal(catalog)
+			if err != nil {
+				return mk(nil, &rpcError{Code: -32603, Message: "encode pack catalog: " + err.Error()})
+			}
+			return mk(map[string]any{
+				"contents": []ResourceContent{
+					{URI: params.URI, MimeType: "application/json", Text: string(body)},
+				},
+			}, nil)
+		case "helmdeck://sessions":
+			if s.sessionLister == nil {
+				return mk(nil, &rpcError{Code: -32602, Message: "helmdeck://sessions unavailable: session runtime not wired"})
+			}
+			views, err := s.sessionLister.List(ctx)
+			if err != nil {
+				return mk(nil, &rpcError{Code: -32603, Message: "list sessions: " + err.Error()})
+			}
+			body, err := json.Marshal(views)
+			if err != nil {
+				return mk(nil, &rpcError{Code: -32603, Message: "encode session list: " + err.Error()})
+			}
+			return mk(map[string]any{
+				"contents": []ResourceContent{
+					{URI: params.URI, MimeType: "application/json", Text: string(body)},
+				},
+			}, nil)
+		default:
+			return mk(nil, &rpcError{Code: -32602, Message: "unknown resource URI: " + params.URI})
+		}
 
 	case "tools/call":
 		// _meta.progressToken is an MCP-spec opt-in: when the client

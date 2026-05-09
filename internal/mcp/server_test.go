@@ -195,7 +195,9 @@ func TestPackServerUnknownMethod(t *testing.T) {
 	write, read, stop := startPackServerScanner(t, reg, eng)
 	defer stop()
 
-	write(`{"jsonrpc":"2.0","id":6,"method":"resources/list"}`)
+	// Use a deliberately-unimplemented method name; resources/list and
+	// resources/read are real handlers as of v0.10.2 (issue #44).
+	write(`{"jsonrpc":"2.0","id":6,"method":"prompts/list"}`)
 	resp := read()
 	if !strings.Contains(resp, `"code":-32601`) {
 		t.Errorf("expected -32601: %s", resp)

@@ -11,6 +11,30 @@ and the hard exit gates for each — see
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-05-09
+
+A small patch release that ships the **MCP Resources** surface (closes [#44](https://github.com/tosin2013/helmdeck/issues/44)) plus a refined registry-listing description. Functionally additive only; no breaking changes.
+
+### Added
+
+- **MCP Resources** (`#44`) — the MCP server now serves `resources/list` and `resources/read` per the 2024-11-05 spec, alongside the existing `tools/list` / `tools/call`. Two read-only resources surface today:
+  - `helmdeck://packs` — the live pack catalog (every registered pack with its input schema). Equivalent to `tools/list` as a browsable resource.
+  - `helmdeck://sessions` — live session list (id, status, image, created_at). Wired only when the control plane has an active session runtime; safely omitted otherwise.
+  - The `initialize` response now declares the `resources` capability so MCP clients discover the new surface automatically.
+  - 7 unit tests cover both happy paths, the missing-runtime fallback, the unknown-URI error, lister error propagation, and the capability declaration.
+
+### Changed
+
+- **Registry description** now reads *"Self-hosted MCP server: sandboxed browser, desktop, vision, code-edit packs for any agent."* (was "38 capability packs (browser, desktop, vision, repo, fs, slides, podcast) for MCP agents."). Leads with the value proposition + self-hosted differentiator instead of the feature list.
+- **Registry submission script + workflow** corrected to point at the search API URL — the registry has no human-facing web UI today, only the metadata API. Was a pre-1.0 documentation bug from the v0.10.1 cycle.
+
+### Operator notes
+
+- **No action required for existing v0.10.1 installs** — MCP Resources is purely additive (new methods don't break existing tools/* clients). Upgrade if you want to expose `helmdeck://sessions` and `helmdeck://packs` to your agent for browsing.
+- **Out of scope for #44** (deferred): JWT scope filtering on resources, per-MCP-client integration tests. Tracked as follow-ups; the spec implementation is complete and the 7 unit tests cover the surface.
+
+---
+
 ## [0.10.1] - 2026-05-09
 
 A patch release that completes helmdeck's listing on the [official MCP Registry](https://registry.modelcontextprotocol.io/). The v0.10.0 attempt failed namespace verification because two pieces of metadata weren't yet declared on the published artifacts — this release adds them. Functionally identical to v0.10.0; no pack/API/binary behavior changes.

@@ -111,6 +111,9 @@ func registerMCPSSERoutes(mux *http.ServeMux, deps Deps) {
 	if deps.ArtifactStore != nil {
 		mcpOpts = append(mcpOpts, mcp.WithArtifacts(deps.ArtifactStore))
 	}
+	if deps.Runtime != nil {
+		mcpOpts = append(mcpOpts, mcp.WithSessions(sessionListerAdapter{rt: deps.Runtime}))
+	}
 	server := mcp.NewPackServer(deps.PackRegistry, deps.PackEngine, mcpOpts...)
 	registry := newSSERegistry()
 

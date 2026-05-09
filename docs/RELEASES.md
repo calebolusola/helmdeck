@@ -259,6 +259,29 @@ Production design partners + community.
 
 ---
 
+## v0.10.2 — MCP Resources + registry description refinement — ✅ Shipped 2026-05-09 {#v0102}
+
+**Theme:** "Browse helmdeck state as MCP resources, not just tools."
+
+> **Closes [#44](https://github.com/tosin2013/helmdeck/issues/44).** Adds `resources/list` + `resources/read` so MCP clients can browse `helmdeck://packs` and `helmdeck://sessions` as read-only resources alongside the existing `tools/*` surface. Strictly additive — no breaking changes.
+
+### Ships
+
+- **MCP Resources spec implementation** — `resources/list` returns `helmdeck://packs` (always) and `helmdeck://sessions` (when a session runtime is wired); `resources/read` serves both as JSON. The `initialize` capabilities advert now includes `resources: {}`.
+- **Refined registry description** — "Self-hosted MCP server: sandboxed browser, desktop, vision, code-edit packs for any agent." (was a 38-pack feature list). Leads with the value prop + self-hosted differentiator.
+- **Registry submission script + workflow doc fixes** — point at the search API URL instead of the broken `/servers/<name>` web URL (registry is API-only in preview).
+
+### Audience
+
+Same as v0.10.1 — production design partners + community. MCP-client builders who want a browsable resource surface; everyone else can skip.
+
+### Out of scope (deferred follow-ups)
+
+- JWT scope filtering on resources (full #44 acceptance criteria item)
+- Per-MCP-client integration tests for resource discovery
+
+---
+
 ## v0.10.1 — MCP Registry namespace verification — ✅ Shipped 2026-05-09 {#v0101}
 
 **Theme:** "Make the published artifacts pass the MCP Registry's namespace-verification checks."

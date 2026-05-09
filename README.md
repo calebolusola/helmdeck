@@ -37,7 +37,7 @@ Three audiences specifically:
 
 ## Status
 
-**v0.10.1 shipped** — 38 capability packs (incl. blog.publish + podcast.generate), credential vault, repo packs,
+**v0.10.2 shipped** — 38 capability packs (incl. blog.publish + podcast.generate), credential vault, repo packs,
 code-edit loop, OpenTelemetry GenAI instrumentation, and the full
 Management UI are all live. Helmdeck is also published to the [official
 MCP Registry](https://registry.modelcontextprotocol.io/) as

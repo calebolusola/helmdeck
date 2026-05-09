@@ -31,6 +31,9 @@ func registerMCPServerRoute(mux *http.ServeMux, deps Deps) {
 	if deps.ArtifactStore != nil {
 		mcpOpts = append(mcpOpts, mcp.WithArtifacts(deps.ArtifactStore))
 	}
+	if deps.Runtime != nil {
+		mcpOpts = append(mcpOpts, mcp.WithSessions(sessionListerAdapter{rt: deps.Runtime}))
+	}
 	server := mcp.NewPackServer(deps.PackRegistry, deps.PackEngine, mcpOpts...)
 	mux.HandleFunc("/api/v1/mcp/ws", func(w http.ResponseWriter, r *http.Request) {
 		conn, _, _, err := ws.UpgradeHTTP(r, w)

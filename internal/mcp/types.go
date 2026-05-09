@@ -71,6 +71,26 @@ type Tool struct {
 	InputSchema json.RawMessage `json:"inputSchema,omitempty"`
 }
 
+// Resource mirrors the MCP `resource` shape from the 2024-11-05 spec.
+// Resources are read-only data the client can browse without invoking
+// a tool — used here to expose helmdeck://packs (pack catalog) and
+// helmdeck://sessions (live session list). See ADR 006 + issue #44.
+type Resource struct {
+	URI         string `json:"uri"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	MimeType    string `json:"mimeType,omitempty"`
+}
+
+// ResourceContent is what resources/read returns. The MCP spec allows
+// either text or blob; for our two helmdeck:// resources we always
+// emit text (JSON-serialized session list / pack catalog).
+type ResourceContent struct {
+	URI      string `json:"uri"`
+	MimeType string `json:"mimeType,omitempty"`
+	Text     string `json:"text,omitempty"`
+}
+
 // StdioConfig is the parsed Config for TransportStdio. JSON shape:
 //
 //	{"command":"npx","args":["-y","@some/mcp-server"],"env":{"K":"V"}}
