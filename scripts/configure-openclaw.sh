@@ -51,6 +51,11 @@ HELMDECK_NETWORK="${HELMDECK_NETWORK:-baas-net}"
 HELMDECK_URL="${HELMDECK_URL:-http://${HELMDECK_CONTAINER}:3000/api/v1/mcp/sse}"
 
 OPENCLAW_CONTAINER="${OPENCLAW_CONTAINER:-openclaw-openclaw-gateway-1}"
+# Path to the OpenClaw repo's docker-compose.yml. Default matches the
+# canonical /root/openclaw checkout; override for hosts where OpenClaw
+# lives elsewhere (e.g. /home/<user>/openclaw). Used by the auth-list
+# probe and the "is-the-container-running" hint.
+OPENCLAW_COMPOSE_FILE="${OPENCLAW_COMPOSE_FILE:-/root/openclaw/docker-compose.yml}"
 JWT_CACHE="${JWT_CACHE:-/tmp/helmdeck-jwt.txt}"
 JWT_TTL_DAYS="${JWT_TTL_DAYS:-7}"
 JWT_REFRESH_WINDOW_HOURS="${JWT_REFRESH_WINDOW_HOURS:-24}"
@@ -107,7 +112,7 @@ docker ps --format '{{.Names}}' | grep -qx "$HELMDECK_CONTAINER" \
 	|| die "$HELMDECK_CONTAINER is not running (start with 'make compose-up')"
 
 docker ps --format '{{.Names}}' | grep -qx "$OPENCLAW_CONTAINER" \
-	|| die "$OPENCLAW_CONTAINER is not running (start with 'docker compose -f /root/openclaw/docker-compose.yml up -d openclaw-gateway')"
+	|| die "$OPENCLAW_CONTAINER is not running (start with 'docker compose -f $OPENCLAW_COMPOSE_FILE up -d openclaw-gateway')"
 
 # Probe for the LLM-provider auth OpenClaw needs before this script can pin
 # a model. Helmdeck's gateway env-var (HELMDECK_OPENROUTER_API_KEY in
@@ -122,31 +127,64 @@ provider_from_model() {
 	printf '%s' "$m" | awk -F'/' '{print $1}'
 }
 PROVIDER="$(provider_from_model "$MODEL")"
+
+# Detect the shell-env credential injection path (set in the OpenClaw
+# overlay compose.openclaw-sidecar.yml). When OPENCLAW_LOAD_SHELL_ENV=true
+# is on the container AND the corresponding <PROVIDER>_API_KEY env var
+# is set on the container, OpenClaw routes provider calls fine without
+# an `openclaw models auth login` profile — so the auth-list probe
+# below is a false positive in that case.
+provider_shell_env_ok() {
+	local provider_upper
+	provider_upper="$(printf '%s' "$1" | tr '[:lower:]' '[:upper:]')"
+	docker exec "$OPENCLAW_CONTAINER" sh -c \
+		"[ \"\${OPENCLAW_LOAD_SHELL_ENV:-}\" = \"true\" ] && [ -n \"\${${provider_upper}_API_KEY:-}\" ]" \
+		2>/dev/null
+}
+
 if [[ "$PROVIDER" != "openclaw" && "$PROVIDER" != "" ]]; then
 	# OpenClaw 2026.5.6 'models auth list' output shape:
 	#   Profiles:
 	#   - openrouter:default [openrouter/api_key]
 	# So the provider line is `- <provider>:<profile-id> [<provider>/<auth-method>]`.
 	# Grep for "^- <provider>(:| )" to match the profile entry across older + newer formats.
-	if ! docker compose -f /root/openclaw/docker-compose.yml \
+	if ! docker compose -f "$OPENCLAW_COMPOSE_FILE" \
 			run --rm -T openclaw-cli models auth list 2>/dev/null \
 			| grep -qiE "^[-* ]+${PROVIDER}([:[:space:]]|$)"; then
-		warn "OpenClaw has no '${PROVIDER}' auth configured."
-		warn ""
-		warn "  Run this once, paste your API key when prompted, then re-run me:"
-		warn ""
-		warn "    docker compose -f /root/openclaw/docker-compose.yml run --rm -it openclaw-cli \\"
-		warn "      models auth login --provider ${PROVIDER}"
-		warn ""
-		warn "  (OpenClaw 2026.5.6+ requires --provider as a flag, not a positional arg."
-		warn "   The -it is required for the interactive TTY prompt.)"
-		warn ""
-		warn "  (This is OpenClaw's own model auth — separate from helmdeck's"
-		warn "  gateway env vars in deploy/compose/.env.local. See"
-		warn "  docs/integrations/openclaw.md §5 'Configure OpenClaw's LLM provider'.)"
-		die "missing ${PROVIDER} auth"
+		# Check the shell-env path before we hard-fail. If it's in
+		# use the auth-list probe will always come back empty —
+		# OpenClaw's `models auth list` only shows entries created by
+		# `auth login`, never the OPENCLAW_LOAD_SHELL_ENV passthrough.
+		if provider_shell_env_ok "$PROVIDER"; then
+			warn "OpenClaw has no '${PROVIDER}' login profile, but"
+			warn "  OPENCLAW_LOAD_SHELL_ENV=true and ${PROVIDER^^}_API_KEY is set on"
+			warn "  the container — provider calls will route via the shell-env"
+			warn "  fallback. Continuing. If routing 401s at runtime, run:"
+			warn "    docker compose -f $OPENCLAW_COMPOSE_FILE run --rm -it openclaw-cli \\"
+			warn "      models auth login --provider ${PROVIDER}"
+		else
+			warn "OpenClaw has no '${PROVIDER}' auth configured."
+			warn ""
+			warn "  Run this once, paste your API key when prompted, then re-run me:"
+			warn ""
+			warn "    docker compose -f $OPENCLAW_COMPOSE_FILE run --rm -it openclaw-cli \\"
+			warn "      models auth login --provider ${PROVIDER}"
+			warn ""
+			warn "  (OpenClaw 2026.5.6+ requires --provider as a flag, not a positional arg."
+			warn "   The -it is required for the interactive TTY prompt.)"
+			warn ""
+			warn "  (This is OpenClaw's own model auth — separate from helmdeck's"
+			warn "  gateway env vars in deploy/compose/.env.local. See"
+			warn "  docs/integrations/openclaw.md §5 'Configure OpenClaw's LLM provider'.)"
+			warn ""
+			warn "  Or set OPENCLAW_LOAD_SHELL_ENV=true on the container and export"
+			warn "  ${PROVIDER^^}_API_KEY in the host shell — see the openclaw-sidecar"
+			warn "  compose overlay."
+			die "missing ${PROVIDER} auth"
+		fi
+	else
+		log "preflight: ${PROVIDER} auth is configured"
 	fi
-	log "preflight: ${PROVIDER} auth is configured"
 fi
 
 log "preflight ok"
