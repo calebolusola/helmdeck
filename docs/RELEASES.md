@@ -259,6 +259,34 @@ Production design partners + community.
 
 ---
 
+## v0.10.1 — MCP Registry namespace verification — ✅ Shipped 2026-05-09 {#v0101}
+
+**Theme:** "Make the published artifacts pass the MCP Registry's namespace-verification checks."
+
+> **Functionally identical to v0.10.0.** No pack/API/binary behavior changes. This release exists solely to add two pieces of metadata the official MCP Registry's validators need to confirm we own the `io.github.tosin2013/helmdeck` namespace. Existing v0.10.0 installs do not need to upgrade unless they specifically want the registry-listed install path.
+
+### Ships
+
+- **`mcpName` field on the npm package** — `@helmdeck/mcp-bridge@0.10.1`'s `package.json` now declares `"mcpName": "io.github.tosin2013/helmdeck"`. The npm validator reads this to confirm the package belongs to the registered namespace.
+- **`io.modelcontextprotocol.server.name` label on the OCI image** — `ghcr.io/tosin2013/helmdeck-mcp:0.10.1` now carries the label. The OCI validator reads this to confirm namespace ownership.
+- **`.github/workflows/mcp-registry.yml`** auto-publishes `.mcp/server.json` to `registry.modelcontextprotocol.io` on every `v*` tag push (also supports `workflow_dispatch` for ad-hoc runs). Authenticates via GitHub OIDC — no PAT required.
+
+### Live registry entry
+
+`io.github.tosin2013/helmdeck` published to the [official MCP Registry](https://registry.modelcontextprotocol.io/) as of `2026-05-09T17:13Z`, status `active`, both packages (npm + OCI) registered. Verify via the search API:
+
+```
+https://registry.modelcontextprotocol.io/v0/servers?search=io.github.tosin2013%2Fhelmdeck
+```
+
+Downstream aggregators (mcp.so, Glama, PulseMCP) ingest from the official registry on a 1–24h schedule and will appear automatically.
+
+### Audience
+
+Same as v0.10.0 — production design partners + community. Skip this release unless you need the registry-listed install path.
+
+---
+
 ## v0.11.0 — Pack authoring + Test Runner (planned, was v0.10.0) {#v0110}
 
 **Theme:** "Anyone with Python or Node can ship a helmdeck pack."
