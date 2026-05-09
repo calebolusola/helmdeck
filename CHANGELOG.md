@@ -11,6 +11,49 @@ and the hard exit gates for each — see
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-05-09
+
+A "content packs" release. Two new packs land — **`blog.publish`** for posting to Ghost or stuffing markdown/HTML into the artifact store, and **`podcast.generate`** for multi-speaker podcast MP3s via a pluggable TTS engine. The capture pipeline ships in-repo, the upgrade procedure is documented for the first time, and the README now opens with the quantified cost-positioning argument the platform earned by shipping the per-pack reference work. Pack count: **36 → 38**.
+
+The originally-planned v0.10.0 theme (Pack Authoring + Test Runner) slips to v0.11.0 — the work didn't happen this cycle, the slot got repurposed because the new packs were ready.
+
+### Added
+
+- **`blog.publish` pack** (#68 via [#103](https://github.com/tosin2013/helmdeck/pull/103)) — publish to a Ghost installation (live Admin API) OR render markdown/HTML to the helmdeck artifact store. Two body modes (agent-supplied OR prompt+model the pack expands). Goldmark added to `go.mod` for the markdown→HTML shim. Ghost JWT minted inline via `golang-jwt/jwt/v5` (5-min HS256, audience `/admin/`).
+- **`podcast.generate` pack** ([#106](https://github.com/tosin2013/helmdeck/pull/106)) — produce a 1..N speaker podcast MP3 from a script, a prompt, or long-form content (URL/text → LLM converts). Three input modes (script / prompt+model / source_*+model). Five themed system prompts: `interview`, `debate`, `news-roundup`, `deep-dive`, `solo-essay`. Day 1: **ElevenLabs** behind a `podcast.Engine` interface so future PRs (PlayHT, Hume.ai, Resemble.ai) slot in by adding a new file under `internal/podcast/`. Vault credential `elevenlabs-key` (same as `slides.narrate`); silent-fallback when missing. Optional `cover_image_prompt` output for downstream image-gen packs.
+- **38 per-pack reference pages** at [helmdeck.dev/reference/packs](https://helmdeck.dev/reference/packs) — every shipped pack on the agent-first / developer-second template, with live OpenClaw chat-UI transcripts embedded alongside `curl` developer references. (PR-A [#83](https://github.com/tosin2013/helmdeck/pull/83) + PR-B [#95](https://github.com/tosin2013/helmdeck/pull/95) + PR-C [#101](https://github.com/tosin2013/helmdeck/pull/101).) Closes #51, #53, #54, #55, #56, #58, #59, #60, #61, #62, #63, #64.
+- **OpenClaw transcript capture pipeline** at `scripts/oc-capture/` ([#97](https://github.com/tosin2013/helmdeck/pull/97) + [#104](https://github.com/tosin2013/helmdeck/pull/104)) — three scripts (`capture-oc.sh`, `extract-oc-transcript.py`, `inject-transcripts.py`), a generic `capture-batch.sh` driver, and prompt files for the three pack-doc clusters.
+- **Cost-positioning blog + long-form reference** ([#99](https://github.com/tosin2013/helmdeck/pull/99)) — `website/blog/2026-05-08-cheap-models-do-frontier-work.md` + `docs/explanation/why-helmdeck.md` with five per-task comparison tables vs. Anthropic Computer Use, OpenAI Operator, Browser-use, Cursor, Aider, Unstructured.io, LlamaParse, Pictory. Includes a "Run the comparison yourself" reproduction recipe + community-contribution invitation.
+- **Operator upgrade documentation** at [`docs/howto/upgrade-helmdeck.md`](https://helmdeck.dev/howto/upgrade-helmdeck) ([#107](https://github.com/tosin2013/helmdeck/pull/107)) — pre-flight checklist, in-place Compose-stack upgrade, schema-migration handling, post-upgrade validation, rollback, Kubernetes/Helm path preview.
+- **SKILLS.md gains a "Freshness contract" section** ([#98](https://github.com/tosin2013/helmdeck/pull/98)) — teaches agents to re-call stateful packs when state may have changed since the last call. Plus per-client "Load the agent skills" subsections for every integration doc (Claude Code via CLAUDE.md, Claude Desktop via Projects, Gemini CLI via GEMINI.md, Hermes via system_prompt_file).
+- **Per-release-checklist additions** in `docs/RELEASES.md`: step 6 (refresh README + cost numbers per release, [#100](https://github.com/tosin2013/helmdeck/pull/100)), step 7 (operator upgrade procedure smoke, [#107](https://github.com/tosin2013/helmdeck/pull/107)).
+
+### Fixed
+
+- **`vision.click_anywhere` mechanical loop bug** (#102 via [#105](https://github.com/tosin2013/helmdeck/pull/105)) — per-step screenshots now genuinely reflect post-action desktop state. Two changes: `Step` and `StepNative` thread prior-turn actions into the next user message as textual history, and a 250 ms post-dispatch wait gives Xvfb time to repaint. Same fix applies to `vision.fill_form_by_label`. Verified live: per-step PNG artifacts now have **distinct file sizes** between iterations (vs. PR-B baseline where every step's bytes were identical because Xvfb hadn't repainted before scrot fired). **However**, the model-side completion-detection limitation remains — the model still rarely emits `done` on real tasks even when the click visibly landed. **Tracked separately at [#112](https://github.com/tosin2013/helmdeck/issues/112)** for follow-up research (try gpt-4o vs. haiku-4.5, native computer-use schema, two-shot verification). Treat `vision.click_anywhere` as **experimental for production workflows** until #112 lands an answer.
+- **`repo.fetch` empty-remote infinite hang** (#94 via [#96](https://github.com/tosin2013/helmdeck/pull/96)) — `git ls-remote --heads` runs first; pack errors fast with `invalid_input: remote has no branches; push at least one commit before cloning`.
+- **`fs.patch` Anthropic-edit-shape rejection** (#90 via [#93](https://github.com/tosin2013/helmdeck/pull/93)) — both `{search, replace}` and `{edits: [{oldText, newText}]}` shapes accepted.
+- **`doc.parse` `formats: "markdown"` rejection** (#91 via [#93](https://github.com/tosin2013/helmdeck/pull/93)) — `markdown` aliases `md`; both work.
+- **OpenClaw capture pipeline cross-prompt context bleed** ([#97](https://github.com/tosin2013/helmdeck/pull/97)) — every `capture-oc.sh` invocation now mints a fresh `--session-id`. Side-effect: per-call cost dropped ~140× (no 280-event session bloat shipped on every turn).
+- **Vision pack loops now check `ctx.Err()`** (in [#105](https://github.com/tosin2013/helmdeck/pull/105)) — cancelled callers exit cleanly instead of spinning to `max_steps`.
+- **`vision.fill_form_by_label` parity fix** ([#105](https://github.com/tosin2013/helmdeck/pull/105)) — now records per-step PNG artifacts (parity with `click_anywhere`).
+
+### Changed
+
+- **Pack count: 36 → 38** (`blog.publish` + `podcast.generate`)
+- **`README.md`** opens with the quantified cost-positioning argument ($0.07 Phase 5.5 loop on `gpt-oss-120b` vs $0.30+ on Sonnet via Cursor) plus a 4-row comparison table; "other 99%" framing kept as the follow-on paragraph
+- **Homepage tagline** rewritten from "Self-hosted AI agent platform for small open-weight models" to lead with the cost angle
+- **`docs/integrations/SKILLS.md`** picks up the Freshness contract, expanded "How to load" subsection with per-client instructions, "Blog" and "Podcast" catalog entries, and the pack count bump
+
+### Operator notes
+
+- **Upgrade procedure**: `git fetch && git checkout v0.10.0 && make sidecars && make install`. See [`/howto/upgrade-helmdeck`](https://helmdeck.dev/howto/upgrade-helmdeck) for the full pre-/post-upgrade checklist.
+- **Schema migrations**: auto-applied on `store.Open`. Cross-version smoke is tracked in [#108](https://github.com/tosin2013/helmdeck/issues/108) (P1).
+- **OpenClaw skill refresh**: re-run `./scripts/configure-openclaw.sh` after pulling so the new SKILL.md (with podcast/blog entries + Freshness contract) lands in the OpenClaw container.
+- **No breaking changes** to existing pack input/output schemas. All `### Added` work is additive; all `### Fixed` items improve observable behavior in agents' favor.
+- **Pre-Kubernetes audit issues filed**: [#108](https://github.com/tosin2013/helmdeck/issues/108) (schema-migration cross-version test, P1), [#109](https://github.com/tosin2013/helmdeck/issues/109) (sidecar version pinning, P2), [#110](https://github.com/tosin2013/helmdeck/issues/110) (vault master-key rotation, P2), [#111](https://github.com/tosin2013/helmdeck/issues/111) (cross-version upgrade smoke in CI, P2). All tagged Phase 7; none block v0.10.0.
+- **Known limitation**: `vision.click_anywhere` and `vision.fill_form_by_label` are **experimental** — the underlying loop fix in #105 works mechanically (screenshots progress per turn) but the vision model rarely emits `done` on real tasks. See [#112](https://github.com/tosin2013/helmdeck/issues/112) for the research track. Use at your own risk in production workflows; prefer `web.test` (Playwright MCP, deterministic) for browser-automation goals where possible.
+
 ## [0.9.0] - 2026-05-07
 
 A "polish + plumbing" release. No new packs and no API changes — the 36
