@@ -133,7 +133,8 @@ func TestSlidesNarrate_HappyPathWithNarration(t *testing.T) {
 	}}
 	input := `{
 		"markdown": "---\nmarp: true\n---\n\n# Welcome\n\n<!-- Hello everyone -->\n\n---\n\n# Topic\n\n<!-- Let me explain -->",
-		"metadata_model": "openai/gpt-4o-mini"
+		"metadata_model": "openai/gpt-4o-mini",
+		"allow_silent_output": true
 	}`
 	raw, err := runNarrate(t, disp, nil, exec, input)
 	if err != nil {
@@ -180,7 +181,8 @@ func TestSlidesNarrate_HappyPathWithNarration(t *testing.T) {
 func TestSlidesNarrate_NoNotes(t *testing.T) {
 	exec := &narrateExecScript{}
 	input := `{
-		"markdown": "---\nmarp: true\n---\n\n# Slide 1\n\nNo notes here.\n\n---\n\n# Slide 2\n\nAlso no notes."
+		"markdown": "---\nmarp: true\n---\n\n# Slide 1\n\nNo notes here.\n\n---\n\n# Slide 2\n\nAlso no notes.",
+		"allow_silent_output": true
 	}`
 	raw, err := runNarrate(t, nil, nil, exec, input)
 	if err != nil {
@@ -204,7 +206,8 @@ func TestSlidesNarrate_NoNotes(t *testing.T) {
 func TestSlidesNarrate_NoMetadataModel(t *testing.T) {
 	exec := &narrateExecScript{}
 	input := `{
-		"markdown": "---\nmarp: true\n---\n\n# One Slide"
+		"markdown": "---\nmarp: true\n---\n\n# One Slide",
+		"allow_silent_output": true
 	}`
 	raw, err := runNarrate(t, nil, nil, exec, input)
 	if err != nil {
@@ -261,8 +264,10 @@ func TestSlidesNarrate_MarpFailure(t *testing.T) {
 	pack := SlidesNarrate(nil, nil)
 	artifacts := packs.NewMemoryArtifactStore()
 	ec := &packs.ExecutionContext{
-		Pack:      pack,
-		Input:     json.RawMessage(`{"markdown":"---\nmarp: true\n---\n\n# Slide"}`),
+		Pack: pack,
+		// allow_silent_output:true so the #138 credential-resolve
+		// passes and we actually reach the marp step we want to test.
+		Input:     json.RawMessage(`{"markdown":"---\nmarp: true\n---\n\n# Slide","allow_silent_output":true}`),
 		Session:   &session.Session{ID: "s"},
 		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Exec:      exec2Fn,
@@ -282,8 +287,10 @@ func TestSlidesNarrate_FfmpegConcatFailure(t *testing.T) {
 	pack := SlidesNarrate(nil, nil)
 	artifacts := packs.NewMemoryArtifactStore()
 	ec := &packs.ExecutionContext{
-		Pack:    pack,
-		Input:   json.RawMessage(`{"markdown":"---\nmarp: true\n---\n\n# Slide"}`),
+		Pack: pack,
+		// allow_silent_output:true so the #138 credential-resolve
+		// passes and we actually reach the concat step under test.
+		Input:   json.RawMessage(`{"markdown":"---\nmarp: true\n---\n\n# Slide","allow_silent_output":true}`),
 		Session: &session.Session{ID: "s"},
 		Logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Exec: func(_ context.Context, req session.ExecRequest) (session.ExecResult, error) {

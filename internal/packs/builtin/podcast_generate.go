@@ -34,7 +34,6 @@ const (
 	defaultPodcastTheme       = "deep-dive"
 	defaultPodcastDurationMin = 8
 	defaultPodcastSilenceMs   = 600
-	defaultPodcastCred        = "elevenlabs-key"
 )
 
 // PodcastGenerate constructs the podcast.generate pack. v supplies
@@ -47,7 +46,7 @@ func PodcastGenerate(v *vault.Store, eg *security.EgressGuard, d vision.Dispatch
 	return &packs.Pack{
 		Name:        "podcast.generate",
 		Version:     "v1",
-		Description: "Multi-speaker podcast (1..N) → MP3 artifact via pluggable TTS engine. Day 1: ElevenLabs.",
+		Description: "Multi-speaker podcast (1..N) → MP3 artifact via pluggable TTS engine. Day 1: ElevenLabs. Requires HELMDECK_ELEVENLABS_API_KEY in .env.local (auto-hydrated to vault as 'elevenlabs-key'); pass allow_silent_output:true to produce a silence-padded MP3 when no key is configured (CI smoke / demo placeholder).",
 		NeedsSession:    true,
 		PreserveSession: false,
 		SessionSpec: session.Spec{
@@ -71,6 +70,7 @@ func PodcastGenerate(v *vault.Store, eg *security.EgressGuard, d vision.Dispatch
 				"silence_between_turns_ms":  "number",
 				"generate_cover_prompt":     "boolean",
 				"credential":                "string",
+				"allow_silent_output":       "boolean",
 			},
 		},
 		OutputSchema: packs.BasicSchema{
@@ -109,6 +109,7 @@ type podcastGenerateInput struct {
 	SilenceBetweenTurnsMs  int               `json:"silence_between_turns_ms"`
 	GenerateCoverPrompt    bool              `json:"generate_cover_prompt"`
 	Credential             string            `json:"credential"`
+	AllowSilentOutput      bool              `json:"allow_silent_output"`
 }
 
 func podcastGenerateHandler(v *vault.Store, eg *security.EgressGuard, d vision.Dispatcher) packs.HandlerFunc {
@@ -244,18 +245,23 @@ func podcastGenerateHandler(v *vault.Store, eg *security.EgressGuard, d vision.D
 				Message: verr.Error(), Cause: verr}
 		}
 
-		// 4. Resolve credential (silent fallback when missing).
-		credName := in.Credential
-		if credName == "" {
-			credName = defaultPodcastCred
-		}
-		var apiKey string
-		if v != nil {
-			res, err := v.ResolveByName(ctx, vault.Actor{Subject: "*"}, credName)
-			if err == nil {
-				apiKey = string(res.Plaintext)
+		// 4. Resolve credential through the shared #138 ladder:
+		// explicit input → vault:elevenlabs-key → vault:elevenlabs-api-key
+		// → env:HELMDECK_ELEVENLABS_API_KEY. Per #138 we now hard-fail
+		// rather than silently produce silence, unless the caller
+		// explicitly opted in to the silent path via allow_silent_output.
+		apiKey, keySrc := resolveElevenLabsKey(ctx, v, in.Credential)
+		if apiKey == "" {
+			if !in.AllowSilentOutput {
+				return nil, &packs.PackError{
+					Code:    packs.CodeInvalidInput,
+					Message: elevenLabsMissingCredentialMessage,
+				}
 			}
-			// Errors are silent — fallback to anullsrc-padded silent MP3.
+			ec.Logger.Warn("podcast.generate: no ElevenLabs key resolved; producing silence (allow_silent_output=true)",
+				"explicit_credential", in.Credential)
+		} else {
+			ec.Logger.Info("podcast.generate: resolved ElevenLabs key", "source", keySrc)
 		}
 		hasNarration := apiKey != ""
 

@@ -44,7 +44,6 @@ import (
 
 const (
 	elevenLabsBaseURL        = "https://api.elevenlabs.io"
-	elevenLabsVaultKey       = "elevenlabs-key"
 	elevenLabsDefaultModelID = "eleven_multilingual_v2"
 	elevenLabsDefaultFormat  = "mp3_44100_128"
 
@@ -76,7 +75,7 @@ func SlidesNarrate(d vision.Dispatcher, vs *vault.Store) *packs.Pack {
 	return &packs.Pack{
 		Name:         "slides.narrate",
 		Version:      "v1",
-		Description:  "Convert a Marp slide deck to a narrated MP4 video with ElevenLabs TTS and YouTube metadata.",
+		Description:  "Convert a Marp slide deck to a narrated MP4 video with ElevenLabs TTS and YouTube metadata. Requires HELMDECK_ELEVENLABS_API_KEY in .env.local (auto-hydrated to vault as 'elevenlabs-key'); pass allow_silent_output:true to render slides over silence when no key is configured (CI smoke / demo placeholder).",
 		NeedsSession: true,
 		InputSchema: packs.BasicSchema{
 			Required: []string{"markdown"},
@@ -88,6 +87,8 @@ func SlidesNarrate(d vision.Dispatcher, vs *vault.Store) *packs.Pack {
 				"fade_ms":                "number",
 				"default_slide_duration": "number",
 				"metadata_model":         "string",
+				"credential":             "string",
+				"allow_silent_output":    "boolean",
 			},
 		},
 		OutputSchema: packs.BasicSchema{
@@ -149,6 +150,8 @@ type slidesNarrateInput struct {
 	FadeMS               int     `json:"fade_ms"`
 	DefaultSlideDuration float64 `json:"default_slide_duration"`
 	MetadataModel        string  `json:"metadata_model"`
+	Credential           string  `json:"credential"`
+	AllowSilentOutput    bool    `json:"allow_silent_output"`
 }
 
 func slidesNarrateHandler(d vision.Dispatcher, vs *vault.Store) packs.HandlerFunc {
@@ -186,14 +189,23 @@ func slidesNarrateHandler(d vision.Dispatcher, vs *vault.Store) packs.HandlerFun
 		}
 		ec.Report(5, fmt.Sprintf("parsed %d slides", len(slides)))
 
-		// 2. Resolve ElevenLabs API key from vault.
-		var apiKey string
-		if vs != nil {
-			actor := vault.Actor{Subject: "*"}
-			res, err := vs.ResolveByName(ctx, actor, elevenLabsVaultKey)
-			if err == nil {
-				apiKey = string(res.Plaintext)
+		// 2. Resolve ElevenLabs API key through the shared #138 ladder
+		// (explicit → vault:elevenlabs-key → vault:elevenlabs-api-key
+		// → env:HELMDECK_ELEVENLABS_API_KEY). Per #138 we now hard-fail
+		// rather than silently rendering a video over silence, unless
+		// the caller explicitly opted in via allow_silent_output.
+		apiKey, keySrc := resolveElevenLabsKey(ctx, vs, in.Credential)
+		if apiKey == "" {
+			if !in.AllowSilentOutput {
+				return nil, &packs.PackError{
+					Code:    packs.CodeInvalidInput,
+					Message: elevenLabsMissingCredentialMessage,
+				}
 			}
+			ec.Logger.Warn("slides.narrate: no ElevenLabs key resolved; rendering with silent audio (allow_silent_output=true)",
+				"explicit_credential", in.Credential)
+		} else {
+			ec.Logger.Info("slides.narrate: resolved ElevenLabs key", "source", keySrc)
 		}
 		hasNarration := apiKey != ""
 

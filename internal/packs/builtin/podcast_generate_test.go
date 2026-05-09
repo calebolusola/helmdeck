@@ -6,6 +6,9 @@ package builtin
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -42,6 +45,37 @@ func (e *podcastTestExecutor) Exec(_ context.Context, _ string, req session.Exec
 		}
 	}
 	return session.ExecResult{}, nil
+}
+
+// vaultWithElevenAliasKey is the #138-back-compat-alias variant: seeds
+// the vault under the alias name "elevenlabs-api-key" instead of the
+// canonical "elevenlabs-key", to verify the resolveElevenLabsKey ladder
+// finds it.
+func vaultWithElevenAliasKey(t *testing.T, key string) *vault.Store {
+	t.Helper()
+	db, err := store.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	master := make([]byte, 32)
+	v, err := vault.New(db, master)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec, err := v.Create(context.Background(), vault.CreateInput{
+		Name:        "elevenlabs-api-key",
+		Type:        vault.TypeAPIKey,
+		HostPattern: "api.elevenlabs.io",
+		Plaintext:   []byte(key),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := v.Grant(context.Background(), rec.ID, vault.Grant{ActorSubject: "*"}); err != nil {
+		t.Fatal(err)
+	}
+	return v
 }
 
 // vaultWithElevenKey returns an in-memory vault store with the
@@ -88,6 +122,7 @@ func runPodcastGenerate(t *testing.T, v *vault.Store, ex session.Executor, input
 		Input:     json.RawMessage(input),
 		Artifacts: packs.NewMemoryArtifactStore(),
 		Session:   &session.Session{ID: sessionID},
+		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Exec: func(ctx context.Context, req session.ExecRequest) (session.ExecResult, error) {
 			return ex.Exec(ctx, sessionID, req)
 		},
@@ -174,10 +209,9 @@ func TestPodcastGenerate_Validation_SpeakerNotInMap(t *testing.T) {
 
 func TestPodcastGenerate_ScriptMode_HappyPath(t *testing.T) {
 	// No real ElevenLabs server in unit tests, so seed the vault
-	// WITHOUT a key — handler routes to silent-fallback for every
-	// turn (validates the dispatch path + artifact upload). The
-	// "with-real-key" path is exercised by the live integration
-	// test on the running stack.
+	// WITHOUT a key and opt into the silent path explicitly via
+	// allow_silent_output:true (per #138, missing key now hard-fails
+	// by default). Validates the dispatch path + artifact upload.
 	v := vaultWithElevenKey(t, "")
 	ex := &podcastTestExecutor{mp3Bytes: []byte("\xff\xfb\x90finalmp3goeshere")}
 	raw, err := runPodcastGenerate(t, v, ex, `{
@@ -188,7 +222,8 @@ func TestPodcastGenerate_ScriptMode_HappyPath(t *testing.T) {
 			{"speaker":"Alex","text":"Let's dig in."}
 		],
 		"theme": "deep-dive",
-		"silence_between_turns_ms": 400
+		"silence_between_turns_ms": 400,
+		"allow_silent_output": true
 	}`)
 	if err != nil {
 		t.Fatalf("handler: %v", err)
@@ -241,7 +276,8 @@ func TestPodcastGenerate_CoverPromptEmitted(t *testing.T) {
 		"speakers": {"Alex": "v1"},
 		"script":   [{"speaker":"Alex","text":"Today on the show..."}],
 		"theme":    "solo-essay",
-		"generate_cover_prompt": true
+		"generate_cover_prompt": true,
+		"allow_silent_output": true
 	}`)
 	if err != nil {
 		t.Fatalf("handler: %v", err)
@@ -275,12 +311,16 @@ func TestPodcastGenerate_PromptModeWithoutDispatcher(t *testing.T) {
 }
 
 func TestPodcastGenerate_SilentFallback_NoKey(t *testing.T) {
-	// vault has no elevenlabs-key → has_narration:false, MP3 still produced
+	// vault has no elevenlabs-key + caller opts in via allow_silent_output:
+	// → has_narration:false, MP3 still produced. Per #138 the opt-in is
+	// mandatory; without it the handler returns missing_credential
+	// (covered by TestPodcastGenerate_NoKey_HardFails below).
 	v := vaultWithElevenKey(t, "")
 	ex := &podcastTestExecutor{mp3Bytes: []byte("\xff\xfb\x90silentfinal")}
 	raw, err := runPodcastGenerate(t, v, ex, `{
 		"speakers": {"A": "v1"},
-		"script":   [{"speaker":"A","text":"silence please"}]
+		"script":   [{"speaker":"A","text":"silence please"}],
+		"allow_silent_output": true
 	}`)
 	if err != nil {
 		t.Fatalf("handler: %v", err)
@@ -295,5 +335,63 @@ func TestPodcastGenerate_SilentFallback_NoKey(t *testing.T) {
 	}
 	if out.AudioSize == 0 {
 		t.Error("expected non-zero audio_size even in silent fallback")
+	}
+}
+
+// TestPodcastGenerate_NoKey_HardFails pins the #138 contract change:
+// when no ElevenLabs key resolves through the four-step ladder
+// (explicit / vault:elevenlabs-key / vault:elevenlabs-api-key /
+// env:HELMDECK_ELEVENLABS_API_KEY) AND allow_silent_output is not set,
+// the pack returns a typed missing_credential error rather than
+// silently producing a silence-padded MP3. The pre-#138 silent
+// behavior caused operators to think podcast.generate was working
+// when it wasn't.
+func TestPodcastGenerate_NoKey_HardFails(t *testing.T) {
+	v := vaultWithElevenKey(t, "")
+	ex := &podcastTestExecutor{mp3Bytes: []byte("\xff\xfb\x90mp3")}
+	_, err := runPodcastGenerate(t, v, ex, `{
+		"speakers": {"A": "v1"},
+		"script":   [{"speaker":"A","text":"this should fail"}]
+	}`)
+	pe := &packs.PackError{}
+	if !errors.As(err, &pe) {
+		t.Fatalf("want PackError, got %v", err)
+	}
+	if pe.Code != packs.CodeInvalidInput {
+		t.Errorf("code = %q, want invalid_input", pe.Code)
+	}
+	if !strings.Contains(pe.Message, "ElevenLabs key not found") {
+		t.Errorf("message should explain the missing-credential failure: %q", pe.Message)
+	}
+	if !strings.Contains(pe.Message, "allow_silent_output") {
+		t.Errorf("message should hint at the allow_silent_output opt-in: %q", pe.Message)
+	}
+}
+
+// TestPodcastGenerate_KeyResolvedFromAlias asserts the #138 back-compat
+// alias: operators who created their credential as "elevenlabs-api-key"
+// (matching HELMDECK_ELEVENLABS_API_KEY minus the prefix) still get a
+// working podcast without renaming.
+func TestPodcastGenerate_KeyResolvedFromAlias(t *testing.T) {
+	v := vaultWithElevenAliasKey(t, "sk_alias")
+	ex := &podcastTestExecutor{mp3Bytes: []byte("\xff\xfb\x90mp3")}
+	raw, err := runPodcastGenerate(t, v, ex, `{
+		"speakers": {"A": "v1"},
+		"script":   [{"speaker":"A","text":"alias path"}]
+	}`)
+	if err != nil {
+		// We expect the synthesis call to fail (no real ElevenLabs in
+		// unit tests), but specifically with a synthesis error, not a
+		// missing-credential error. Either succeeding or failing past
+		// credential-resolve proves the alias resolved.
+		if strings.Contains(err.Error(), "ElevenLabs key not found") {
+			t.Fatalf("alias should have resolved; got missing_credential: %v", err)
+		}
+		// Any other error is fine for this test — we're only pinning
+		// that the resolve ladder accepted the alias.
+		return
+	}
+	if raw == nil {
+		t.Fatal("expected a response when alias resolves")
 	}
 }
