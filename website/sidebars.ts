@@ -174,6 +174,11 @@ const sidebars: SidebarsConfig = {
           label: 'content',
           items: ['reference/packs/content/ground'],
         },
+        {
+          type: 'category',
+          label: 'blog',
+          items: ['reference/packs/blog/publish'],
+        },
       ],
     },
     {

@@ -52,6 +52,8 @@ changefreq: weekly
 | **Slides** | | | | |
 | `slides.render` | ✅ | Marp + Chromium | `{markdown, format}` | `{artifact_key}` + PDF/PPTX artifact |
 | `slides.narrate` | ✅ | Marp + ElevenLabs + ffmpeg + LLM | `{markdown, voice_id?, model_id?, resolution?, fade_ms?, metadata_model?}` | `{video_artifact_key, video_size, slide_count, total_duration_s, has_narration, voice_used?, metadata_artifact_key?, metadata?}` — MP4 video with per-slide TTS narration from `<!-- speaker notes -->` + YouTube metadata (title, description with timestamps, tags). ElevenLabs API key from vault `elevenlabs-key`; degrades to silent video when missing. |
+| **Blog** | | | | |
+| `blog.publish` | ❌ | Ghost Admin API + goldmark + LLM | `{destination, format, title, body OR (prompt+model), tags?, status?, published_at?, host?, credential?}` | `{destination, format, body_source, model_used?}` + ghost: `{post_id, url, html_url, status, published_at}` OR artifact: `{artifact_key, size}` — publishes to a Ghost blog (live API) or stores rendered markdown/HTML as a helmdeck artifact. Two body modes (agent supplies body OR prompt+model the pack expands via LLM). Ghost vault credential `ghost-admin-key` (id:hexsecret). |
 | **Document** | | | | |
 | `doc.ocr` | ✅ | Tesseract | `{image_path}` | `{text}` |
 | `doc.parse` | ❌ | Docling | `{source_url OR source_b64+filename, formats?, do_ocr?, ocr_lang?}` | `{source, markdown, text?, html?, status, processing_time}` — requires `HELMDECK_DOCLING_ENABLED=true` |
