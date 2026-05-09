@@ -86,8 +86,12 @@ jobs:
           set -euo pipefail
           npm init -y >/dev/null
           npm install --silent ajv ajv-formats
-          curl -fsSL https://raw.githubusercontent.com/modelcontextprotocol/registry/main/docs/reference/server-json/draft/server.schema.json \
-            -o schema.json
+          # Fetch the dated schema referenced by .mcp/server.json's $schema
+          # field so our local validation matches what mcp-publisher does
+          # server-side (it rejects URLs it can't extract a version from).
+          SCHEMA_URL=$(jq -r '."$schema"' .mcp/server.json)
+          echo "Validating against: $SCHEMA_URL"
+          curl -fsSL "$SCHEMA_URL" -o schema.json
           node -e "
             const Ajv = require('ajv');
             const addFormats = require('ajv-formats');
