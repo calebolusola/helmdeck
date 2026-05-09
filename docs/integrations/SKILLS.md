@@ -446,6 +446,10 @@ Before answering a question that touches stateful packs, ask yourself:
 
 If yes, **call the tool**. The cost of a re-call is a fraction of a cent; the cost of a stale answer is the user's trust.
 
+---
+
+## Repo discovery pattern
+
 When you call `repo.fetch`, the response carries a **context envelope** designed to eliminate the "is the repo empty?" question on the first turn. Use it before reaching for `fs.list` or `fs.read`:
 
 - `tree` — array of file paths (`git ls-files` output, sorted, capped at 300). If `tree_truncated: true`, narrow with `fs.list` + a glob from `doc_hints`.

@@ -139,6 +139,41 @@ const sidebars: SidebarsConfig = {
             'reference/packs/language/node-run',
           ],
         },
+        {
+          type: 'category',
+          label: 'repo',
+          items: [
+            'reference/packs/repo/fetch',
+            'reference/packs/repo/map',
+            'reference/packs/repo/push',
+          ],
+        },
+        {
+          type: 'category',
+          label: 'slides',
+          items: [
+            'reference/packs/slides/render',
+            'reference/packs/slides/narrate',
+          ],
+        },
+        {
+          type: 'category',
+          label: 'desktop',
+          items: [
+            'reference/packs/desktop/run-app-and-screenshot',
+            'reference/packs/desktop-rest-primitives',
+          ],
+        },
+        {
+          type: 'category',
+          label: 'research',
+          items: ['reference/packs/research/deep'],
+        },
+        {
+          type: 'category',
+          label: 'content',
+          items: ['reference/packs/content/ground'],
+        },
       ],
     },
     {
