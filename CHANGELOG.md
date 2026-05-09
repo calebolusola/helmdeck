@@ -23,7 +23,7 @@ A patch release that completes helmdeck's listing on the [official MCP Registry]
 ### Operator notes
 
 - **No action required for existing v0.10.0 installs.** The bridge binary, control plane, and all 38 packs are unchanged. Skip this release unless you specifically need the registry-listed install path.
-- **Registry entry goes live on tag push.** [`.github/workflows/mcp-registry.yml`](https://github.com/tosin2013/helmdeck/blob/main/.github/workflows/mcp-registry.yml) auto-fires; verify at `https://registry.modelcontextprotocol.io/servers/io.github.tosin2013/helmdeck`.
+- **Registry entry goes live on tag push.** [`.github/workflows/mcp-registry.yml`](https://github.com/tosin2013/helmdeck/blob/main/.github/workflows/mcp-registry.yml) auto-fires; verify via the search API at `https://registry.modelcontextprotocol.io/v0/servers?search=io.github.tosin2013%2Fhelmdeck` (the registry is API-only in preview — there is no human-facing web UI; browse downstream aggregators like mcp.so, Glama, and PulseMCP instead).
 
 ---
 

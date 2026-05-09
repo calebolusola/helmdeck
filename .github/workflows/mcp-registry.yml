@@ -139,10 +139,12 @@ jobs:
             echo "- **Status:** ${{ job.status }}"
             echo ""
             if [[ "${{ job.status }}" == "success" ]]; then
-              echo "Verify the listing at:"
-              echo "- API: https://registry.modelcontextprotocol.io/v0/servers?search=$(echo $NAME | sed 's|/|%2F|g')"
-              echo "- Web: https://registry.modelcontextprotocol.io/servers/$NAME"
+              SEARCH_URL="https://registry.modelcontextprotocol.io/v0/servers?search=$(echo $NAME | sed 's|/|%2F|g')"
+              echo "Verify the listing via the search API:"
+              echo "  $SEARCH_URL"
               echo ""
-              echo "Downstream aggregators (mcp.so, Glama, PulseMCP) typically ingest within 24h."
+              echo "(The official registry has no human-facing web UI today — it's"
+              echo "an API-only metadata service. Browse via downstream aggregators"
+              echo "instead: mcp.so, Glama, PulseMCP. They typically ingest within 24h.)"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
