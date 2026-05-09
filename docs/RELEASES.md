@@ -209,11 +209,50 @@ Existing v0.8.0 operators. A direct upgrade — `git pull && make install` picks
 
 ---
 
-## v0.10.0 — Pack authoring + Test Runner (planned) {#v0100}
+## v0.10.0 — Content packs (Phase 6.5+) — ✅ Shipped 2026-05-09 {#v0100}
+
+**Theme:** "Two new packs (blog + podcast), the cost story, and an upgrade procedure."
+
+> **Repurposed slot.** The originally-planned v0.10.0 (Pack Authoring + Test Runner) didn't ship this cycle — `blog.publish` and `podcast.generate` were ready, plus the v0.9.0 → v0.10.0 doc work earned the version bump on its own. The Pack-Authoring + Test-Runner plan moves to v0.11.0 below.
+
+### Ships
+
+- **`blog.publish`** (#68) — Ghost Admin API + artifact-store destinations × body/prompt modes × markdown/html formats. Vault credential `ghost-admin-key`. Closes the personal-content marketplace seed.
+- **`podcast.generate`** — multi-speaker (1..N) MP3 from script / prompt+model / source_url-or-source_text. Five themed system prompts (interview, debate, news-roundup, deep-dive, solo-essay) bake in podcast best practices. Day 1 ships **ElevenLabs** behind a `podcast.Engine` interface in `internal/podcast/` so future PRs add PlayHT / Hume.ai / Resemble.ai by adding one file. Vault credential `elevenlabs-key` (same as `slides.narrate`); silent-fallback when missing.
+- **38 per-pack reference pages** at helmdeck.dev/reference/packs — every shipped pack on the agent-first / developer-second template, with live OpenClaw chat-UI transcripts.
+- **OpenClaw transcript capture pipeline** at `scripts/oc-capture/` — `capture-oc.sh`, `capture-batch.sh`, `extract-oc-transcript.py`, `inject-transcripts.py`, plus prompt files for the three pack-doc clusters.
+- **Cost-positioning blog** (`/blog/cheap-models-do-frontier-work`) + **long-form why-helmdeck reference** (`/explanation/why-helmdeck`) with five comparison tables and a reproduction recipe.
+- **Operator upgrade documentation** at `/howto/upgrade-helmdeck` — pre-flight checklist, in-place Compose path, schema-migration handling, post-upgrade validation, rollback, Helm-path preview. **Closes the upgrade-docs gap** that was the maintainer's blocker for v1.0 prep.
+- **SKILLS.md "Freshness contract"** + per-client "Load the agent skills" subsections for every integration doc.
+- **Per-release-checklist additions** — step 6 (refresh README + cost numbers), step 7 (operator upgrade procedure smoke).
+
+### Fixed (highlights — full list in `CHANGELOG.md`)
+
+- `vision.click_anywhere` mechanical loop bug (#102) — per-step screenshots now reflect post-action state. **Caveat**: model-side completion-detection limitation remains; tracked at #112. Treat both vision packs as **experimental for production**.
+- `repo.fetch` empty-remote infinite hang (#94)
+- `fs.patch` Anthropic-edit-shape rejection (#90)
+- `doc.parse` `formats: "markdown"` rejection (#91)
+- OpenClaw capture pipeline cross-prompt context bleed — fresh `--session-id` per call ([#97](https://github.com/tosin2013/helmdeck/pull/97))
+
+### Pre-Kubernetes audit issues filed (no v0.10.0 blockers)
+
+- #108 — schema-migration cross-version test (P1, Phase 7)
+- #109 — sidecar version pinning (P2, Phase 7)
+- #110 — vault master-key rotation (P2, Phase 7)
+- #111 — cross-version upgrade smoke in CI (P2, Phase 7)
+- #112 — `vision.click_anywhere` model-side convergence research (P2)
+
+### Audience
+
+Production design partners + community.
+
+---
+
+## v0.11.0 — Pack authoring + Test Runner (planned, was v0.10.0) {#v0110}
 
 **Theme:** "Anyone with Python or Node can ship a helmdeck pack."
 
-> **Milestone:** new milestone, slotted between v0.8 and v1.0. Phase number TBD (likely Phase 6.7 or a renamed Phase 7-pre).
+> **Slipped from v0.10.0.** Pushed because the content packs (blog + podcast) were ready first; the marketplace seed they unlock matters more than the authoring framework right now. Original scope intact.
 
 ### Ships (planned)
 
@@ -228,11 +267,11 @@ A non-maintainer can follow the tutorial against a fresh `make install` and ship
 
 ### Audience
 
-Community contributors. Sets up the marketplace in v0.11.0.
+Community contributors. Sets up the marketplace in v0.12.0.
 
 ---
 
-## v0.11.0 — Marketplace beta (planned) {#v0110}
+## v0.12.0 — Marketplace beta (planned, was v0.11.0) {#v0120}
 
 **Theme:** "Discover and install community packs."
 
