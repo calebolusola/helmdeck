@@ -413,6 +413,16 @@ func main() {
 			logger.Warn("register github pack failed", "pack", p.Name, "err", err)
 		}
 	}
+	// blog.publish (#68): registered unconditionally — body mode works
+	// without a gateway dispatcher. The dispatcher is wired in below
+	// inside the gateway-conditional block (see vision/research block)
+	// when one is configured; we re-register at that point with the
+	// dispatcher so prompt mode also works. For deployments without a
+	// gateway, prompt mode returns CodeInternal at handler time with
+	// a clear "no dispatcher" message.
+	if err := packReg.Register(builtin.BlogPublish(vaultStore, egressGuard, nil)); err != nil {
+		logger.Warn("register blog.publish pack failed", "err", err)
+	}
 	// Vision packs (T408) need a gateway dispatcher. Register only when
 	// one is configured — operators running in stub mode without
 	// providers should still get the rest of the pack catalog.
@@ -453,6 +463,13 @@ func main() {
 			if err := packReg.Register(p); err != nil {
 				logger.Warn("register vision pack failed", "pack", p.Name, "err", err)
 			}
+		}
+		// blog.publish prompt mode: re-register with the dispatcher so
+		// the prompt+model body path works. The body-mode-only
+		// registration above is overwritten by the registry's last-wins
+		// semantics. Body mode keeps working either way.
+		if err := packReg.Register(builtin.BlogPublish(vaultStore, egressGuard, visionDispatcher)); err != nil {
+			logger.Warn("register blog.publish (with dispatcher) failed", "err", err)
 		}
 	}
 	if *disableAuth {

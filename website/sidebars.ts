@@ -139,6 +139,11 @@ const sidebars: SidebarsConfig = {
             'reference/packs/language/node-run',
           ],
         },
+        {
+          type: 'category',
+          label: 'blog',
+          items: ['reference/packs/blog/publish'],
+        },
       ],
     },
     {
