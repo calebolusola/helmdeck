@@ -126,6 +126,9 @@ Helmdeck is a browser automation and AI capability platform. You have access to 
 ### Podcast
 - `podcast.generate` — Multi-speaker (1..N) podcast MP3 from a script, prompt, OR long-form content (URL/text). Speakers are a `{name: voice_id}` map; the same pack handles solo monologue and multi-host dialogue. Five closed-set `theme`s bake in podcast best practices: `interview`, `debate`, `news-roundup`, `deep-dive`, `solo-essay`. Day 1 uses ElevenLabs (vault `elevenlabs-key`); the `engine` field is reserved for future TTS providers. **Critical**: when using prompt or source modes, the agent supplies the speakers map upfront (with voice IDs) — the pack tells the LLM which speaker names to use. `generate_cover_prompt: true` returns an image-gen prompt for cover art the agent can hand to a future image pack. Composes with `research.deep` → `podcast.generate` (theme `news-roundup` or `deep-dive`) for evidence-grounded shows.
 
+### Image
+- `image.generate` — Text → image via fal.ai (`fal-ai/flux/schnell` default, ~$0.003/image, 1-3s). Vault `fal-key` or `HELMDECK_FAL_KEY`. 1-4 images per call. Use for podcast covers, slide shields, blog hero images. The `engine` field is `"fal"` only day 1; Replicate is reserved for a community PR. Pair with `podcast.generate`'s `generate_cover_prompt: true` to chain prompt → cover art in two pack calls.
+
 ### Repository
 - `repo.fetch` — Clone a git repo into a session. Returns `clone_path`, `session_id`, **and a context envelope** (`tree`, `readme`, `entrypoints`, `signals`) so you can orient immediately without follow-up calls. See "Repo discovery pattern" below.
 - `repo.map` — Return a symbol-level structural map (functions, types, classes) of a cloned repo, budgeted to a token target. Opt-in follow-on for code-understanding tasks; inspired by Aider's repo-map.

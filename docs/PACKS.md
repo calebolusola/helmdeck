@@ -56,6 +56,8 @@ changefreq: weekly
 | `blog.publish` | ❌ | Ghost Admin API + goldmark + LLM | `{destination, format, title, body OR (prompt+model), tags?, status?, published_at?, host?, credential?}` | `{destination, format, body_source, model_used?}` + ghost: `{post_id, url, html_url, status, published_at}` OR artifact: `{artifact_key, size}` — publishes to a Ghost blog (live API) or stores rendered markdown/HTML as a helmdeck artifact. Two body modes (agent supplies body OR prompt+model the pack expands via LLM). Ghost vault credential `ghost-admin-key` (id:hexsecret). |
 | **Podcast** | | | | |
 | `podcast.generate` | ✅ | ElevenLabs TTS + ffmpeg + LLM (engine-pluggable) | `{speakers, script OR (prompt+model) OR (source_url/source_text+model), engine?, model_id?, theme?, duration_target_min?, silence_between_turns_ms?, generate_cover_prompt?}` | `{engine, audio_artifact_key, audio_size, duration_s, speaker_count, turn_count, script_source, model_used?, voices_used, has_narration, theme, cover_image_prompt?}` — multi-speaker (1..N) podcast MP3. Three input modes: agent-supplied script, prompt+model (LLM generates dialogue), or long-form content (URL/text → LLM converts). Five themes (`interview`/`debate`/`news-roundup`/`deep-dive`/`solo-essay`) bake in podcast best practices. Day 1: ElevenLabs only (vault `elevenlabs-key`); future engines (PlayHT, Hume.ai, Resemble.ai) slot in via `engine` field. Silent-fallback when key missing. |
+| **Image** | | | | |
+| `image.generate` | ❌ | fal.ai sync `fal.run` (engine-pluggable) | `{prompt, engine?, model?, image_size?, num_images?, seed?, credential?}` | `{image_artifact_key, image_size, engine, model_used, prompt_used, seed_used?, image_artifact_keys?}` — text → image. Day 1: fal.ai only (vault `fal-key`, `HELMDECK_FAL_KEY`); default model `fal-ai/flux/schnell` (~$0.003/image, 1-3s). 1-4 images per call. `engine` field reserved for Replicate as a community PR. Hard-fails when credential missing. |
 | **Document** | | | | |
 | `doc.ocr` | ✅ | Tesseract | `{image_path}` | `{text}` |
 | `doc.parse` | ❌ | Docling | `{source_url OR source_b64+filename, formats?, do_ocr?, ocr_lang?}` | `{source, markdown, text?, html?, status, processing_time}` — requires `HELMDECK_DOCLING_ENABLED=true` |
@@ -131,6 +133,7 @@ All packs live in `internal/packs/builtin/`:
 | `repo_fetch.go` | `repo.fetch` |
 | `repo_push.go` | `repo.push` |
 | `http_fetch.go` | `http.fetch` |
+| `image_generate.go` | `image.generate` |
 | `github.go` | `github.*` |
 | `slides_render.go` | `slides.render` |
 | `slides_narrate.go` | `slides.narrate` |

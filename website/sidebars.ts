@@ -191,6 +191,11 @@ const sidebars: SidebarsConfig = {
           label: 'podcast',
           items: ['reference/packs/podcast/generate'],
         },
+        {
+          type: 'category',
+          label: 'image',
+          items: ['reference/packs/image/generate'],
+        },
       ],
     },
     {

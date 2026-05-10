@@ -384,6 +384,13 @@ func main() {
 	if err := packReg.Register(builtin.HTTPFetch(vaultStore, egressGuard)); err != nil {
 		logger.Warn("register http.fetch pack failed", "err", err)
 	}
+	// image.generate (#71) — text → image via fal.ai. Registered
+	// unconditionally; the handler hard-fails with a typed
+	// missing_credential error if HELMDECK_FAL_KEY isn't set, same
+	// shape as podcast.generate / slides.narrate (#138).
+	if err := packReg.Register(builtin.ImageGenerate(vaultStore, egressGuard)); err != nil {
+		logger.Warn("register image.generate pack failed", "err", err)
+	}
 	// T807b (ADR 035): web.scrape is Firecrawl-backed. The pack is
 	// registered unconditionally so agents discovering the catalog
 	// see it — the handler itself gates on HELMDECK_FIRECRAWL_ENABLED
