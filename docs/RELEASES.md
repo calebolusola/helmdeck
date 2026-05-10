@@ -310,11 +310,48 @@ Same as v0.10.0 — production design partners + community. Skip this release un
 
 ---
 
-## v0.11.0 — Pack authoring + Test Runner (planned, was v0.10.0) {#v0110}
+## v0.11.0 — podcast/slides UX hardening + image generation — ✅ Shipped 2026-05-10 {#v0110}
+
+**Theme:** "The new content packs work — now their first-run UX matches."
+
+> **Closes #136, #137, #138, #140, #141, #142, #143, #145, and ships the new `image.generate` pack (#71).** Adds the `helmdeck://voices` MCP resource. Closes #139 + #144 as duplicates. Defers #146 (chained image-gen integrations) to a follow-up release.
+
+A coherent feature release driven by 9 issues filed during a v0.10.2 OpenClaw integration: silent MP3s when the credential name was wrong, hardcoded `/root/openclaw` paths, blocking Go preflight on the docker-only path, no voice discovery, no cost preview. The vault env-hydrate fix (#142) is the load-bearing piece — it root-causes the silent-fallback class of bug, not just the ElevenLabs instance.
+
+### Ships
+
+- **`image.generate` pack (#71)** — text → image via fal.ai's synchronous `fal.run` endpoint. Default model `fal-ai/flux/schnell` (~$0.003/image, 1-3s). 1-4 images per call. The `engine` input field is reserved for a follow-up community PR to add Replicate. Vault credential `fal-key` (with `HELMDECK_FAL_KEY` env-var fallback, auto-hydrated via #142).
+- **Vault env-hydrate (#142)** — `WellKnownEnvCredentials` registry auto-imports `HELMDECK_*_API_KEY` env vars into the vault under their canonical names at startup. New `vault.Store.UpsertByName`. Wildcard ACL granted on first create; user-managed entries never clobbered. One INFO log per hydration (`vault env hydrate ok name=elevenlabs-key`).
+- **`podcast.generate` + `slides.narrate` require narration by default (#138)** — pre-this-change, missing the ElevenLabs credential silently produced a silence-padded artifact. Now both packs hard-fail with `missing_credential` + an actionable message. Pass `allow_silent_output: true` to opt back into the silent path. Shared 4-step credential resolver: explicit input → vault `elevenlabs-key` → vault `elevenlabs-api-key` (back-compat alias) → `os.Getenv("HELMDECK_ELEVENLABS_API_KEY")`.
+- **`helmdeck://voices` MCP resource (#143)** — exposes the operator's ElevenLabs voice catalog with 1h cache keyed on credential fingerprint. New `internal/voices/` package with `ListVoices(ctx, apiKey) → []Voice`.
+- **`min_turn_duration_s` per-turn floor (#141)** — both packs gain the input (default `5s`); short TTS turns get padded with `anullsrc` so output respects the floor. `0` opts out.
+- **`dry_run` + cost preview (#145)** — both packs gain `dry_run:bool`; short-circuits before TTS, returns `tts_chars` + `estimated_cost_usd`. Cost block also included in regular responses. Plan rate table covers Free/Starter/Creator/Pro/Scale; override via `HELMDECK_ELEVENLABS_RATE_PER_CHAR_USD`.
+- **`slides.narrate` ffmpeg failure surfaces full stderr (#140)** — inline cap raised 512 → 4096 bytes; full stderr persisted to artifact store as `ffmpeg-stderr-segment-NNN.txt`.
+- **`scripts/install.sh` `--no-build` fix (#136)** — Go preflight skipped when `--no-build` is set; unblocks the docker-only path on hosts with apt-default Go 1.22.
+- **`scripts/configure-openclaw.sh` paths + auth (#137)** — new `OPENCLAW_COMPOSE_FILE` env override; `OPENCLAW_LOAD_SHELL_ENV=true` recognized so the auth-list probe doesn't false-positive.
+
+### Audience
+
+Operators integrating helmdeck with OpenClaw or running the content packs (`podcast.generate`, `slides.narrate`); anyone wanting `image.generate` for podcast covers / blog hero images. The credential fail-loud change (#138) is a behavior break — silent-fallback callers must add `allow_silent_output: true` to keep working. Strictly additive otherwise.
+
+### Out of scope (deferred follow-ups)
+
+- **#146** — chain `image.generate` into `podcast.generate.cover_image` / `slides.narrate.shield_image` + `slide_images` / `blog.publish.hero_image`. The pack lands in this release; the integration layer on top of it lands later.
+- Voice-id pre-validation in `podcast.generate` / `slides.narrate` — currently agents discover voices via `helmdeck://voices` and pass the IDs verbatim; future work could pre-validate at handler entry and return `invalid_voice` synchronously.
+- `speakers: {"alice":"auto"}` auto-pick mode for `podcast.generate` — pick distinct voices automatically with seed for reproducibility.
+- Replicate engine for `image.generate` — flagged as a community-friendly follow-up; the `engine` input field is in the schema from day 1 so adding it is a new switch arm rather than a schema break.
+
+### MCP Registry
+
+The auto-publish workflow (`.github/workflows/mcp-registry.yml`) republishes the listing on `v*` tag push. After tagging, verify at `https://registry.modelcontextprotocol.io/v0/servers?search=io.github.tosin2013%2Fhelmdeck` (expect `version: 0.11.0`, `isLatest: true`).
+
+---
+
+## v0.12.0 — Pack authoring + Test Runner (planned, was v0.11.0) {#v0120}
 
 **Theme:** "Anyone with Python or Node can ship a helmdeck pack."
 
-> **Slipped from v0.10.0.** Pushed because the content packs (blog + podcast) were ready first; the marketplace seed they unlock matters more than the authoring framework right now. Original scope intact.
+> **Slipped from v0.11.0.** Pushed again because the v0.11.0 slot got reallocated to the podcast/slides UX hardening cluster. Original scope intact.
 
 ### Ships (planned)
 
@@ -329,11 +366,11 @@ A non-maintainer can follow the tutorial against a fresh `make install` and ship
 
 ### Audience
 
-Community contributors. Sets up the marketplace in v0.12.0.
+Community contributors. Sets up the marketplace in v0.13.0.
 
 ---
 
-## v0.12.0 — Marketplace beta (planned, was v0.11.0) {#v0120}
+## v0.13.0 — Marketplace beta (planned, was v0.12.0) {#v0130}
 
 **Theme:** "Discover and install community packs."
 

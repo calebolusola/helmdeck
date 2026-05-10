@@ -16,6 +16,47 @@ and the hard exit gates for each — see
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-05-10
+
+**Theme:** podcast/slides UX hardening + onboarding fixes + image generation.
+
+A coherent feature release that addresses 9 issues filed during a v0.10.2 OpenClaw integration: the new content packs work, but their first-run UX assumed you already knew the conventions. Silent MP3s when the credential name is wrong, hardcoded `/root/openclaw` paths, blocking Go preflight on the docker-only path, no voice discovery, no cost preview — all fixed.
+
+The vault env-hydrate fix (#142) is the load-bearing piece: it root-causes the silent-fallback class of bug, not just the ElevenLabs instance. Pairing #138 (the per-pack contract change) with #142 (the platform fix) closes the bug class.
+
+### Added
+
+- **`image.generate` pack (#71)** — text → image via fal.ai's synchronous `fal.run` endpoint. Default model `fal-ai/flux/schnell` (~$0.003/image, 1-3s). 1-4 images per call. The `engine` input field is reserved so a follow-up community PR can add Replicate without a schema change. Vault credential `fal-key` (with `HELMDECK_FAL_KEY` env-var fallback, auto-hydrated). 9 unit tests cover happy path + multi-image + missing credential hard-fail + env fallback + bad engine + 401 surfacing.
+- **Vault env-hydrate (#142)** — at control-plane startup, `WellKnownEnvCredentials` registry auto-imports `HELMDECK_*_API_KEY` env vars into the vault under their canonical names. Operators who set `HELMDECK_ELEVENLABS_API_KEY` in `.env.local` per the README now get a working `elevenlabs-key` vault entry without a manual `POST /vault/credentials` call. Wildcard ACL granted on first create. Subsequent restarts respect user-managed entries (`metadata.source != "env-hydrate"` skips re-upsert). One INFO log per hydration (`vault env hydrate ok name=elevenlabs-key host=api.elevenlabs.io`).
+- **`vault.Store.UpsertByName`** — sibling to `Create`. Inserts if absent, rotates ciphertext + refreshes patterns/metadata in place if present. Returns `(record, created, error)`.
+- **`helmdeck://voices` MCP resource (#143)** — exposes the operator's ElevenLabs voice catalog via the same `resources/list` + `resources/read` surface as `helmdeck://packs` and `helmdeck://sessions`. 1h in-memory cache keyed on the credential's plaintext fingerprint (rotating the key invalidates the cache automatically).
+- **`internal/voices/`** — new package with `ListVoices(ctx, apiKey) → []Voice` extracted from `slides.narrate`'s inline `pickRandomVoice`. Voice exposes `voice_id`, `name`, `labels` (accent/gender/use_case), `preview_url`, `source`. Tests use overridable `ElevenLabsBaseURL` package var.
+- **`podcast.generate` + `slides.narrate` per-turn duration floor (#141)** — new `min_turn_duration_s: number` input (default `5`). Short TTS turns get padded with trailing `anullsrc` silence so the output respects a per-segment minimum (matches the slides.narrate house style). Pass `min_turn_duration_s: 0` explicitly to opt out and preserve raw TTS pacing.
+- **`podcast.generate` + `slides.narrate` dry_run / cost preview (#145)** — new `dry_run: bool` (default `false`) short-circuits before TTS synthesis and returns the script + per-speaker (or per-slide) `tts_chars` map + `estimated_cost_usd` + breakdown. Cost block is also included in regular (non-dry-run) responses. New `internal/podcast/cost.go` with plan rate table (Free/Starter/Creator/Pro/Scale) and `HELMDECK_ELEVENLABS_RATE_PER_CHAR_USD` override.
+- **`podcast.generate` + `slides.narrate` `allow_silent_output` opt-in** — paired with the #138 contract change below; `true` activates the (now opt-in) silence-padded fallback for CI smoke tests / demo placeholders.
+
+### Changed
+
+- **`podcast.generate` + `slides.narrate` require narration by default (#138)** — pre-this-change, missing the ElevenLabs credential silently produced a silence-padded artifact with `has_narration: false` buried in the response. Operators discovered the misconfiguration only by listening to the MP3. Now the packs hard-fail with a typed `missing_credential` error and an actionable message ("Set HELMDECK_ELEVENLABS_API_KEY in deploy/compose/.env.local..."). Pass `allow_silent_output: true` to opt back into the silent path. Shared 4-step credential resolver (`internal/packs/builtin/elevenlabs_creds.go`): explicit `credential` input → vault `elevenlabs-key` → vault `elevenlabs-api-key` (back-compat alias) → `os.Getenv("HELMDECK_ELEVENLABS_API_KEY")`. Both packs log one INFO line on successful resolve naming the ladder step that matched.
+- **`slides.narrate` ffmpeg failure surfaces full stderr (#140)** — inline error message cap raised from 512 → 4096 bytes. Full stderr (plus the failing command line) persisted to the artifact store as `ffmpeg-stderr-segment-NNN.txt` / `ffmpeg-stderr-concat.txt`; the artifact key is referenced from the inline error so operators can fetch the unredacted output via the artifacts API.
+
+### Fixed
+
+- **`scripts/install.sh` blocked `--no-build` on hosts with old Go (#136)** — `check_go_version` ran unconditionally even with `--no-build`, failing on Debian/Ubuntu's apt-default Go 1.22. The control-plane Dockerfile builds inside `golang:1.26-alpine`, so the docker-only path needs no host Go. Wrapped in `if [[ "${DO_BUILD}" -eq 1 ]]`.
+- **`scripts/configure-openclaw.sh` hardcoded `/root/openclaw` + over-strict shell-env auth check (#137)** — added `OPENCLAW_COMPOSE_FILE` env override (default unchanged); replaced 3 hardcoded path references. Auth-list `die` downgraded to `warn` when the OpenClaw container has `OPENCLAW_LOAD_SHELL_ENV=true` and `<PROVIDER>_API_KEY` is set on it (the auth-list probe is a guaranteed false positive in that documented setup path).
+
+### Closed as duplicates
+
+- #139 (duplicate of #141) and #144 (duplicate of #145) — closed without separate fixes.
+
+### Deferred
+
+- #146 (chain `image.generate` into podcast/slide/blog covers) — defers to a follow-up release. The `image.generate` pack lands in this release; the integration layer on top of it lands later.
+
+### MCP Registry
+
+The auto-publish workflow (`.github/workflows/mcp-registry.yml`) republishes the listing on `v*` tag push. After tagging, verify at `https://registry.modelcontextprotocol.io/v0/servers/io.github.tosin2013/helmdeck` (expect `version: 0.11.0`, `isLatest: true`).
+
 ## [0.10.2] - 2026-05-09
 
 A small patch release that ships the **MCP Resources** surface (closes [#44](https://github.com/tosin2013/helmdeck/issues/44)) plus a refined registry-listing description. Functionally additive only; no breaking changes.

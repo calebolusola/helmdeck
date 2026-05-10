@@ -37,9 +37,10 @@ Three audiences specifically:
 
 ## Status
 
-**v0.10.2 shipped** — 38 capability packs (incl. blog.publish + podcast.generate), credential vault, repo packs,
-code-edit loop, OpenTelemetry GenAI instrumentation, and the full
-Management UI are all live. Helmdeck is also published to the [official
+**v0.11.0 shipped** — 39 capability packs (now including `image.generate` via fal.ai), credential vault with
+env-var auto-hydration, podcast/slides UX hardening (fail-loud on missing credentials, per-turn duration floor,
+dry_run cost preview), `helmdeck://voices` MCP resource, repo packs, code-edit loop, OpenTelemetry GenAI
+instrumentation, and the full Management UI are all live. Helmdeck is also published to the [official
 MCP Registry](https://registry.modelcontextprotocol.io/) as
 `io.github.tosin2013/helmdeck` for one-line install in registry-aware
 clients. Phase 6.5 (MCP Server Hosting & Pack Evolution) is complete;
