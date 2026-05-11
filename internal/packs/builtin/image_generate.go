@@ -110,158 +110,205 @@ type imageGenerateInput struct {
 	Credential string  `json:"credential"`
 }
 
+// ImageGenRequest is the parsed input for RunImageGen. Exported so
+// content packs (podcast/slides/blog) that chain image.generate can
+// reuse the helper without round-tripping through the pack registry
+// and paying twice for vault/audit overhead.
+//
+// Field defaults match the pack schema: empty Engine → "fal", empty
+// Model → "fal-ai/flux/schnell", zero NumImages → 1. The pack handler
+// fills in defaults from JSON input; callers building this struct
+// directly should match the same defaults or rely on RunImageGen's
+// validation.
+type ImageGenRequest struct {
+	Prompt     string
+	Engine     string
+	Model      string
+	ImageSize  string
+	NumImages  int
+	Seed       int64
+	Credential string
+}
+
+// ImageGenResult is the typed output from RunImageGen. The pack
+// handler turns this into a JSON output map; chained callers can use
+// the fields directly (e.g., podcast.generate surfaces ArtifactKeys[0]
+// as `cover_image_artifact_key`).
+type ImageGenResult struct {
+	ArtifactKeys []string // namespaced under ec.Pack.Name; len() = NumImages requested
+	FirstSize    int64
+	ModelUsed    string
+	Engine       string
+	PromptUsed   string
+	SeedUsed     int64
+}
+
+// RunImageGen is the chainable entrypoint shared by image.generate's
+// own handler and by content packs that auto-generate images
+// (podcast.generate covers, slides.render heroes, blog.publish feature
+// images). Artifacts are written via ec.Artifacts under ec.Pack.Name,
+// so a podcast.generate caller gets `podcast.generate/image-000.png`
+// keys rather than `image.generate/...` — the chained pack owns its
+// own artifacts.
+func RunImageGen(ctx context.Context, ec *packs.ExecutionContext, v *vault.Store, eg *security.EgressGuard, in ImageGenRequest) (*ImageGenResult, *packs.PackError) {
+	if strings.TrimSpace(in.Prompt) == "" {
+		return nil, &packs.PackError{Code: packs.CodeInvalidInput, Message: "prompt is required"}
+	}
+	engine := in.Engine
+	if engine == "" {
+		engine = imageGenDefaultEngine
+	}
+	if engine != "fal" {
+		return nil, &packs.PackError{Code: packs.CodeInvalidInput,
+			Message: fmt.Sprintf(`engine must be "fal" (got %q); other engines (e.g. "replicate") ship in future PRs`, engine)}
+	}
+	model := in.Model
+	if model == "" {
+		model = imageGenDefaultModel
+	}
+	num := in.NumImages
+	if num == 0 {
+		num = 1
+	}
+	if num < 1 || num > 4 {
+		return nil, &packs.PackError{Code: packs.CodeInvalidInput,
+			Message: "num_images must be between 1 and 4"}
+	}
+	if ec.Artifacts == nil {
+		return nil, &packs.PackError{Code: packs.CodeInternal,
+			Message: "image.generate requires an artifact store"}
+	}
+
+	apiKey := resolveFalKey(ctx, v, in.Credential)
+	if apiKey == "" {
+		return nil, &packs.PackError{Code: packs.CodeInvalidInput,
+			Message: "fal.ai key not found. Set HELMDECK_FAL_KEY in deploy/compose/.env.local — it auto-imports into the vault as 'fal-key' on startup. Or POST a credential named 'fal-key' to /api/v1/vault/credentials."}
+	}
+
+	ec.Report(20, fmt.Sprintf("submitting fal.ai/%s", model))
+	body := map[string]any{
+		"prompt":     in.Prompt,
+		"num_images": num,
+	}
+	if in.ImageSize != "" {
+		body["image_size"] = in.ImageSize
+	}
+	if in.Seed != 0 {
+		body["seed"] = in.Seed
+	}
+	bodyBytes, _ := json.Marshal(body)
+
+	url := strings.TrimRight(ImageGenFalBaseURL, "/") + "/" + strings.TrimLeft(model, "/")
+	if eg != nil {
+		if err := eg.CheckURL(ctx, url); err != nil {
+			return nil, &packs.PackError{Code: packs.CodeInvalidInput,
+				Message: fmt.Sprintf("egress denied: %v", err), Cause: err}
+		}
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, &packs.PackError{Code: packs.CodeHandlerFailed, Message: err.Error(), Cause: err}
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Key "+apiKey)
+	req.Header.Set("Accept", "application/json")
+
+	client := &http.Client{Timeout: imageGenHTTPTimeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, &packs.PackError{Code: packs.CodeHandlerFailed,
+			Message: fmt.Sprintf("fal.ai request: %v", err), Cause: err}
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, &packs.PackError{Code: packs.CodeHandlerFailed,
+			Message: fmt.Sprintf("fal.ai %d: %s", resp.StatusCode, truncateStr(string(respBody), 512))}
+	}
+
+	var parsed struct {
+		Images []struct {
+			URL         string `json:"url"`
+			ContentType string `json:"content_type"`
+			Width       int    `json:"width"`
+			Height      int    `json:"height"`
+		} `json:"images"`
+		Seed int64 `json:"seed"`
+	}
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return nil, &packs.PackError{Code: packs.CodeHandlerFailed,
+			Message: fmt.Sprintf("parse fal.ai response: %v", err), Cause: err}
+	}
+	if len(parsed.Images) == 0 {
+		return nil, &packs.PackError{Code: packs.CodeHandlerFailed,
+			Message: "fal.ai returned no images"}
+	}
+
+	ec.Report(60, fmt.Sprintf("downloading %d image(s)", len(parsed.Images)))
+	artKeys := make([]string, 0, len(parsed.Images))
+	var firstSize int64
+	for i, img := range parsed.Images {
+		imgBytes, ct, err := fetchImageBytes(ctx, img.URL, imgImageContentType(img.ContentType))
+		if err != nil {
+			return nil, &packs.PackError{Code: packs.CodeHandlerFailed,
+				Message: fmt.Sprintf("download image %d: %v", i, err), Cause: err}
+		}
+		art, err := ec.Artifacts.Put(ctx, ec.Pack.Name,
+			fmt.Sprintf("image-%03d.%s", i, contentTypeToExt(ct)),
+			imgBytes, ct)
+		if err != nil {
+			return nil, &packs.PackError{Code: packs.CodeArtifactFailed,
+				Message: err.Error(), Cause: err}
+		}
+		artKeys = append(artKeys, art.Key)
+		if i == 0 {
+			firstSize = art.Size
+		}
+	}
+
+	ec.Report(95, "image.generate complete")
+	return &ImageGenResult{
+		ArtifactKeys: artKeys,
+		FirstSize:    firstSize,
+		ModelUsed:    model,
+		Engine:       engine,
+		PromptUsed:   in.Prompt,
+		SeedUsed:     parsed.Seed,
+	}, nil
+}
+
 func imageGenerateHandler(v *vault.Store, eg *security.EgressGuard) packs.HandlerFunc {
 	return func(ctx context.Context, ec *packs.ExecutionContext) (json.RawMessage, error) {
 		var in imageGenerateInput
 		if err := json.Unmarshal(ec.Input, &in); err != nil {
 			return nil, &packs.PackError{Code: packs.CodeInvalidInput, Message: err.Error(), Cause: err}
 		}
-		if strings.TrimSpace(in.Prompt) == "" {
-			return nil, &packs.PackError{Code: packs.CodeInvalidInput, Message: "prompt is required"}
+		result, perr := RunImageGen(ctx, ec, v, eg, ImageGenRequest{
+			Prompt:     in.Prompt,
+			Engine:     in.Engine,
+			Model:      in.Model,
+			ImageSize:  in.ImageSize,
+			NumImages:  in.NumImages,
+			Seed:       in.Seed,
+			Credential: in.Credential,
+		})
+		if perr != nil {
+			return nil, perr
 		}
-		engine := in.Engine
-		if engine == "" {
-			engine = imageGenDefaultEngine
-		}
-		if engine != "fal" {
-			return nil, &packs.PackError{Code: packs.CodeInvalidInput,
-				Message: fmt.Sprintf(`engine must be "fal" (got %q); other engines (e.g. "replicate") ship in future PRs`, engine)}
-		}
-		model := in.Model
-		if model == "" {
-			model = imageGenDefaultModel
-		}
-		num := in.NumImages
-		if num == 0 {
-			num = 1
-		}
-		if num < 1 || num > 4 {
-			return nil, &packs.PackError{Code: packs.CodeInvalidInput,
-				Message: "num_images must be between 1 and 4"}
-		}
-		if ec.Artifacts == nil {
-			return nil, &packs.PackError{Code: packs.CodeInternal,
-				Message: "image.generate requires an artifact store"}
-		}
-
-		// Resolve credential: explicit input → vault:fal-key →
-		// env:HELMDECK_FAL_KEY. Same fail-loud pattern as #138 — an
-		// image with no auth would 401, then the operator would
-		// stare at a 4xx without knowing the credential plumbing
-		// path. Better to surface the misconfiguration here.
-		apiKey := resolveFalKey(ctx, v, in.Credential)
-		if apiKey == "" {
-			return nil, &packs.PackError{Code: packs.CodeInvalidInput,
-				Message: "fal.ai key not found. Set HELMDECK_FAL_KEY in deploy/compose/.env.local — it auto-imports into the vault as 'fal-key' on startup (#142 lands the registry entry). Or POST a credential named 'fal-key' to /api/v1/vault/credentials."}
-		}
-
-		// fal.run/{model_id} returns the generated image(s) inline
-		// (no poll loop). The wire shape is consistent across FLUX
-		// models: { "images": [ { "url": "...", "content_type": "...", "width": N, "height": N } ], ... }
-		ec.Report(20, fmt.Sprintf("submitting fal.ai/%s", model))
-		body := map[string]any{
-			"prompt":      in.Prompt,
-			"num_images":  num,
-		}
-		if in.ImageSize != "" {
-			body["image_size"] = in.ImageSize
-		}
-		if in.Seed != 0 {
-			body["seed"] = in.Seed
-		}
-		bodyBytes, _ := json.Marshal(body)
-
-		url := strings.TrimRight(ImageGenFalBaseURL, "/") + "/" + strings.TrimLeft(model, "/")
-		// Egress guard catches "fal.run is on the internal network"-
-		// shaped misconfigurations consistent with how http.fetch
-		// applies it; fal.run resolves to public IPs in normal use
-		// so the guard is a no-op except for hostile environments.
-		if eg != nil {
-			if err := eg.CheckURL(ctx, url); err != nil {
-				return nil, &packs.PackError{Code: packs.CodeInvalidInput,
-					Message: fmt.Sprintf("egress denied: %v", err), Cause: err}
-			}
-		}
-
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyBytes))
-		if err != nil {
-			return nil, &packs.PackError{Code: packs.CodeHandlerFailed, Message: err.Error(), Cause: err}
-		}
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Key "+apiKey)
-		req.Header.Set("Accept", "application/json")
-
-		client := &http.Client{Timeout: imageGenHTTPTimeout}
-		resp, err := client.Do(req)
-		if err != nil {
-			return nil, &packs.PackError{Code: packs.CodeHandlerFailed,
-				Message: fmt.Sprintf("fal.ai request: %v", err), Cause: err}
-		}
-		defer resp.Body.Close()
-
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20)) // 4 MiB cap on JSON envelope
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return nil, &packs.PackError{Code: packs.CodeHandlerFailed,
-				Message: fmt.Sprintf("fal.ai %d: %s", resp.StatusCode, truncateStr(string(respBody), 512))}
-		}
-
-		var parsed struct {
-			Images []struct {
-				URL         string `json:"url"`
-				ContentType string `json:"content_type"`
-				Width       int    `json:"width"`
-				Height      int    `json:"height"`
-			} `json:"images"`
-			Seed int64 `json:"seed"`
-		}
-		if err := json.Unmarshal(respBody, &parsed); err != nil {
-			return nil, &packs.PackError{Code: packs.CodeHandlerFailed,
-				Message: fmt.Sprintf("parse fal.ai response: %v", err), Cause: err}
-		}
-		if len(parsed.Images) == 0 {
-			return nil, &packs.PackError{Code: packs.CodeHandlerFailed,
-				Message: "fal.ai returned no images"}
-		}
-
-		// Download each image and upload to the artifact store. The
-		// fal.ai signed URLs expire (typically ~1h), so we copy the
-		// bytes into our durable storage rather than handing the
-		// caller a short-lived URL.
-		ec.Report(60, fmt.Sprintf("downloading %d image(s)", len(parsed.Images)))
-		artKeys := make([]string, 0, len(parsed.Images))
-		var firstSize int64
-		for i, img := range parsed.Images {
-			imgBytes, ct, err := fetchImageBytes(ctx, img.URL, imgImageContentType(img.ContentType))
-			if err != nil {
-				return nil, &packs.PackError{Code: packs.CodeHandlerFailed,
-					Message: fmt.Sprintf("download image %d: %v", i, err), Cause: err}
-			}
-			art, err := ec.Artifacts.Put(ctx, ec.Pack.Name,
-				fmt.Sprintf("image-%03d.%s", i, contentTypeToExt(ct)),
-				imgBytes, ct)
-			if err != nil {
-				return nil, &packs.PackError{Code: packs.CodeArtifactFailed,
-					Message: err.Error(), Cause: err}
-			}
-			artKeys = append(artKeys, art.Key)
-			if i == 0 {
-				firstSize = art.Size
-			}
-		}
-
-		ec.Report(95, "image.generate complete")
 		out := map[string]any{
-			"image_artifact_key": artKeys[0],
-			"image_size":         firstSize,
-			"engine":             engine,
-			"model_used":         model,
-			"prompt_used":        in.Prompt,
+			"image_artifact_key": result.ArtifactKeys[0],
+			"image_size":         result.FirstSize,
+			"engine":             result.Engine,
+			"model_used":         result.ModelUsed,
+			"prompt_used":        result.PromptUsed,
 		}
-		if parsed.Seed != 0 {
-			out["seed_used"] = parsed.Seed
+		if result.SeedUsed != 0 {
+			out["seed_used"] = result.SeedUsed
 		}
-		if len(artKeys) > 1 {
-			out["image_artifact_keys"] = artKeys
+		if len(result.ArtifactKeys) > 1 {
+			out["image_artifact_keys"] = result.ArtifactKeys
 		}
 		return json.Marshal(out)
 	}
