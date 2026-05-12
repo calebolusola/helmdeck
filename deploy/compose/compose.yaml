@@ -1,10 +1,25 @@
 # Helmdeck — single-node Compose deployment (ADR 009 dev / staging tier).
 #
-# This stack brings up the control plane backed by SQLite (Postgres lands
-# alongside the K8s StatefulSet in T703). The control plane spawns
-# ephemeral browser-sidecar containers via the host Docker socket and
-# attaches each one to the baas-net bridge so CDP traffic stays off the
-# host. Operators reach the API on http://localhost:3000.
+# This file is the **image-mode** base — services reference pre-built
+# images published to ghcr.io. Operators with no Go toolchain run with
+# just this file and get a working stack via `docker compose pull && up`.
+#
+# To build from source instead (contributors, dirty trees), layer the
+# build overlay:
+#
+#   docker compose \
+#     -f deploy/compose/compose.yaml \
+#     -f deploy/compose/compose.build.yaml \
+#     --env-file deploy/compose/.env.local up -d
+#
+# The overlay re-adds `build:` blocks for control-plane (and any other
+# service that supports source builds). See `scripts/install.sh
+# --image-mode` for the operator-friendly toggle.
+#
+# Image tags resolve via `${HELMDECK_VERSION:-latest}`. Pin a specific
+# release in .env.local (e.g. `HELMDECK_VERSION=0.12.0`) for reproducible
+# deploys; omit to track `latest`. The Helm chart in v1.0-rc1 will
+# reuse the same tag convention.
 #
 # Bring up:    docker compose -f deploy/compose/compose.yaml --env-file deploy/compose/.env up -d
 # Tear down:   docker compose -f deploy/compose/compose.yaml down -v
@@ -18,10 +33,7 @@
 
 services:
   control-plane:
-    build:
-      context: ../..
-      dockerfile: deploy/docker/control-plane.Dockerfile
-    image: ghcr.io/tosin2013/helmdeck:dev
+    image: ghcr.io/tosin2013/helmdeck:${HELMDECK_VERSION:-latest}
     container_name: helmdeck-control-plane
     restart: unless-stopped
     user: root
@@ -95,7 +107,7 @@ services:
     container_name: helmdeck-sidecar-warm
     restart: "no"
     entrypoint: ["/bin/sh", "-c"]
-    command: ["docker pull ghcr.io/tosin2013/helmdeck-sidecar:latest"]
+    command: ["docker pull ghcr.io/tosin2013/helmdeck-sidecar:${HELMDECK_VERSION:-latest}"]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:

@@ -13,7 +13,26 @@ This tutorial takes you from a clean machine to a running helmdeck stack in abou
 
 If you'd rather skim the README and figure it out yourself, [scripts/install.sh](https://github.com/tosin2013/helmdeck/blob/main/scripts/install.sh) is the canonical bootstrap. This page walks through what it does and why.
 
-## Prerequisites
+## Pick your install mode
+
+Helmdeck supports two install paths:
+
+| Mode | Prerequisites | When to use |
+|---|---|---|
+| **Image-mode** (`--image-mode`) | Docker + `openssl` + `curl` only | Production, evaluation, anyone without a Go/Node toolchain. Pulls pre-built `ghcr.io/tosin2013/helmdeck:<version>` images. |
+| **Source-build** (default) | Docker + `make` + `node 20+` + `go 1.26` + `openssl` + `curl` | Contributors, dirty trees, debugging local changes. Builds the control-plane and web bundle from your working copy. |
+
+Image-mode is the path the v1.0 Kubernetes Helm chart will use; the Compose stack runs on the same versioned tag convention so operators can switch from Compose to Helm without re-learning the deploy mental model.
+
+## Prerequisites — image-mode
+
+| What | Version | Why |
+|---|---|---|
+| Docker Engine + Compose v2 | 24.x or newer | Runs the control plane, the Garage object store, and per-session browser containers. |
+| `openssl`, `curl` | any | Generate secrets, poll healthchecks. |
+| Disk | ~4 GB | Sidecar image (~2 GB), Garage data, control-plane image. No build cache. |
+
+## Prerequisites — source-build (default)
 
 | What | Version | Why |
 |---|---|---|
@@ -22,11 +41,23 @@ If you'd rather skim the README and figure it out yourself, [scripts/install.sh]
 | `node` | 20+ | Builds the embedded React Management UI. |
 | `go` | 1.26 | Builds the Go control plane and the `helmdeck-mcp` bridge. |
 | `openssl`, `curl` | any | Generate secrets, poll healthchecks. |
-| Disk | ~6 GB | Sidecar image (~2 GB), Garage data, control-plane image. |
+| Disk | ~6 GB | Sidecar image (~2 GB), Garage data, control-plane image, build cache. |
 
 The install script's preflight stage checks all of these and prints platform-aware install hints if any are missing.
 
 ## Step 1 — Clone and run install
+
+**Image-mode (production / no-toolchain):**
+
+```bash
+git clone https://github.com/tosin2013/helmdeck
+cd helmdeck
+# Optional: pin the version (omit to track latest)
+echo "HELMDECK_VERSION=0.12.0" >> deploy/compose/.env.local 2>/dev/null || true
+./scripts/install.sh --image-mode
+```
+
+**Source-build (contributors):**
 
 ```bash
 git clone https://github.com/tosin2013/helmdeck

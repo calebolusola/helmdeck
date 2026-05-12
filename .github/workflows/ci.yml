@@ -42,6 +42,41 @@ jobs:
           path: coverage.txt
           if-no-files-found: ignore
 
+  compose-lint:
+    name: compose config (image-mode + source-build) (#134)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Compose `config` resolves variables and emits the merged YAML;
+      # it exits non-zero on a broken file. Cheap parity check that
+      # both install paths interpolate cleanly — does NOT spin up the
+      # stack (that needs published images at the current SHA's tag).
+      - name: write minimal .env for config
+        run: |
+          mkdir -p deploy/compose
+          touch deploy/compose/.env.local
+      - name: image-mode (base only)
+        env:
+          HELMDECK_JWT_SECRET: ci-only-not-a-real-secret
+          HELMDECK_VERSION: latest
+        run: |
+          docker compose \
+            -f deploy/compose/compose.yaml \
+            --env-file deploy/compose/.env.local \
+            config --quiet
+      - name: source-build (base + overlay)
+        env:
+          HELMDECK_JWT_SECRET: ci-only-not-a-real-secret
+          HELMDECK_VERSION: dev
+        run: |
+          docker compose \
+            -f deploy/compose/compose.yaml \
+            -f deploy/compose/compose.build.yaml \
+            --env-file deploy/compose/.env.local \
+            config --quiet
+      - name: install.sh --help (flag-parsing smoke)
+        run: bash scripts/install.sh --help >/dev/null
+
   goreleaser-check:
     name: goreleaser config check
     runs-on: ubuntu-latest

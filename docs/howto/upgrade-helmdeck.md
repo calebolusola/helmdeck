@@ -66,24 +66,44 @@ Breaking changes usually mean: pack-input-schema changed, a vault credential nam
 
 ## 2. In-place Compose-stack upgrade
 
-This is the supported path on a single-host Compose deployment. Idempotent — re-running is safe.
+This is the supported path on a single-host Compose deployment. Idempotent — re-running is safe. Pick the path that matches your initial install (see [`tutorials/install-cli.md`](../tutorials/install-cli.md) §"Pick your install mode").
+
+### Path A — Image-mode upgrade (no Go/Node toolchain)
+
+For operators who installed with `--image-mode`. Pulls the new pre-built images from ghcr.io.
 
 ```bash
 cd /path/to/helmdeck
 git fetch --tags
-git checkout v0.10.0           # or whatever tag you're moving to
+git checkout v0.12.0                                # or whatever tag you're moving to
+# Pin the version so the compose env var matches the tag you just checked out.
+# If HELMDECK_VERSION is already set in deploy/compose/.env.local, update it
+# (or leave at "latest" to track the rolling tag — fine for non-production).
+sed -i.bak 's/^HELMDECK_VERSION=.*/HELMDECK_VERSION=0.12.0/' deploy/compose/.env.local || \
+  echo "HELMDECK_VERSION=0.12.0" >> deploy/compose/.env.local
+./scripts/install.sh --image-mode                   # pulls new images, recreates the container
+```
+
+### Path B — Source-build upgrade (contributors / local changes)
+
+For operators who installed from source. Rebuilds the control-plane image locally.
+
+```bash
+cd /path/to/helmdeck
+git fetch --tags
+git checkout v0.12.0           # or whatever tag you're moving to
 make sidecars                   # rebuilds helmdeck-sidecar:dev with any new tools (ffprobe, ctags, …)
 make install                    # idempotent: re-runs preflight, rebuilds control-plane image, recreates the container
 ```
 
-What `make install` does (post-checkout):
+What both paths do (post-checkout):
 
-1. Re-runs `scripts/install.sh` preflight — verifies Docker, Go, sufficient memory, exposed ports
-2. Rebuilds `ghcr.io/tosin2013/helmdeck:dev` (the control-plane image)
-3. Recreates the `helmdeck-control-plane` container — **data volumes (`helmdeck-data`, `helmdeck-artifacts-garage`) persist**
-4. Starts dependent services (Garage, Firecrawl/Docling overlays if previously enabled)
+1. Re-run `scripts/install.sh` preflight — verifies Docker (and Go/Node only in source-build), sufficient memory, exposed ports.
+2. Refresh the control-plane image — pull a tagged image (image-mode) **or** rebuild from source (source-build).
+3. Recreate the `helmdeck-control-plane` container — **data volumes (`helmdeck-data`, `helmdeck-artifacts-garage`) persist**.
+4. Start dependent services (Garage, Firecrawl/Docling overlays if previously enabled).
 
-**Time**: ~3 minutes on a warm Docker layer cache; ~8 minutes on a cold rebuild.
+**Time**: ~1 minute on image-mode with warm Docker cache; ~3 minutes on source-build with warm cache; ~8 minutes on a cold rebuild.
 
 **Brief downtime**: ~30 seconds while the control-plane container restarts. In-flight pack calls error out — operators with mid-flight workflows should wait for them to complete before running `make install`.
 

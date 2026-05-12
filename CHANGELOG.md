@@ -11,6 +11,64 @@ and the hard exit gates for each — see
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-05-12
+
+**Theme:** content-pack image chaining + v1.0 install-path unblocker + pack-authoring MVP.
+
+A bundled release covering four threads that lined up after v0.11.0: chain `image.generate` into the three content packs (#146, unblocked by v0.11.0's #71); `helmdeck://image-models` MCP resource (#158, sibling to #146); unified install paths (#134 step 1, P1 blocker for v1.0.0-rc1); and the originally-planned Pack Authoring MVP (T606a UI + T811 subprocess pack type).
+
+The narrative: covers come for free, the install path becomes Kubernetes-ready, and pack-authoring grows up — operators with no Go toolchain can install via pulled images, and pack authors with no Go can ship in any language via subprocess packs.
+
+### Added
+
+- **Content-pack image chaining (#146)** — additive convenience syntax across four packs, all backed by a shared `RunImageGen` entrypoint extracted from `internal/packs/builtin/image_generate.go`:
+  - **`podcast.generate` `cover_image: bool`** — auto-generates podcast cover artwork via `image.generate`; output gains `cover_image_artifact_key` + `cover_image_model_used`. Optional `cover_image_model` override (default `fal-ai/flux/schnell`).
+  - **`slides.render` `hero_image_prompt: string`** — auto-generates hero artwork; base64-inlined as `<img data:image/png;base64,…>` before slide 1 (after Marp frontmatter when present). Inline bytes avoid Marp needing network access inside the sidecar.
+  - **`slides.narrate` `hero_image_prompt: string`** — same as `slides.render` but inlined INTO slide 1 (no `---` separator) so the per-slide TTS pipeline still sees a populated narrated slide.
+  - **`blog.publish` `feature_image_artifact_key` + `hero_image: bool`** — operator-supplied artifact OR auto-generate from the post title. For Ghost destination, uploads via `/ghost/api/admin/images/upload/` (multipart, same JWT) then stamps the returned URL into the post's `feature_image` field. Artifact-mode writes a sidecar `<slug>-cover.png`.
+- **`helmdeck://image-models` MCP resource (#158)** — mirrors `helmdeck://voices` (shipped v0.11.0). Curated in-tree catalog of 7 fal.ai models (flux/schnell, flux/dev, flux-pro/v1.1, fast-sdxl, flux-realism, recraft-v3, ideogram/v2) with cost, p50 latency, supports-seed, supports-image-size, max resolution, capability tags, and one-sentence trade-off notes. Backed by new `internal/imagemodels` package.
+- **`fal-key` in vault env-hydrate (#158)** — closes the consistency gap `image_generate.go:74` has advertised since v0.11.0 ("auto-hydrated to vault as 'fal-key' once #142 lands"). `HELMDECK_FAL_KEY` now imports into the vault under `fal-key` on startup, same shape as `elevenlabs-key`.
+- **`deploy/compose/compose.build.yaml` overlay (#134 step 1)** — operators choose between image-mode (just `compose.yaml`, pulls `ghcr.io/tosin2013/helmdeck:${HELMDECK_VERSION:-latest}`) and source-build (base + this overlay, builds locally). Compose's deep-merge picks `build:` when both are present, so the same `image:` tag becomes the local build's name.
+- **`scripts/install.sh --image-mode` flag (#134 step 1)** — pulls pre-built images instead of building from source. Implies `--no-build`. Skips host Go / Node / `make` preflight checks — the path needs only Docker, `openssl`, `curl`. Pin reproducible deploys via `HELMDECK_VERSION=0.12.0` in `.env.local`.
+- **Pack Test Runner UI MVP (T606a)** — click any pack row in `/packs` → modal opens with a JSON textarea + Submit. POSTs to `/api/v1/packs/{name}` and renders the response (duration, cost hint when present, full JSON). Schema-derived form rendering ships in v0.13.0; this MVP unblocks "no UI today."
+- **Subprocess pack type (T811 MVP)** — `packs.NewCommandPack(name, version, description, inSchema, outSchema, spec)` constructor turns any executable into a pack via the stdin-JSON / stdout-JSON protocol. Operator-supplied packs auto-register from `$HELMDECK_COMMAND_PACKS_DIR` (one pack per executable, named `cmd.<basename>`). Pack authors can now ship in any language — Python, Node, Bash, Rust — without a Go toolchain dependency.
+
+### Changed
+
+- **`deploy/compose/compose.yaml` is now image-mode by default (#134 step 1)** — `build:` blocks stripped from the base file; `control-plane` and `sidecar-warm` pin `ghcr.io/tosin2013/helmdeck[-sidecar]:${HELMDECK_VERSION:-latest}`. Operators wanting source-build layer in `compose.build.yaml` via `docker compose -f compose.yaml -f compose.build.yaml`. The Helm chart (v1.0-rc1) will reuse the same versioned-tag convention.
+- **`docs/tutorials/install-cli.md`** — adds "Pick your install mode" section with side-by-side prerequisites for image-mode (Docker only) vs source-build (Docker + Go + Node + `make`).
+- **`docs/howto/upgrade-helmdeck.md` §2 splits into Path A (image-mode) + Path B (source-build)** — operators on a fresh box can `git clone && ./scripts/install.sh --image-mode` and skip the Go toolchain entirely.
+- **`SlidesRender(v, eg)` signature** — was `SlidesRender()`; now takes vault + egress for `RunImageGen` access. `cmd/control-plane/main.go` updated to pass `vaultStore, egressGuard`.
+- **`SlidesNarrate(d, vs, eg)` signature** — gained third `eg` parameter for the same reason.
+
+### Tests
+
+~50 new tests across the bundle. Highlights:
+
+- `podcast.generate` cover-image happy path + dry-run-skips-cover + model override (3 tests)
+- `slides.render` hero-image insertion (after frontmatter / no frontmatter / model override / no-fal-credential fails loud), empty-prompt skips, mermaid-coexistence (5 tests)
+- `slides.narrate` hero inlined into slide 1 + dry-run skips (2 tests)
+- `blog.publish` artifact + ghost feature-image paths, supplied-key + auto-gen, mutual-exclusion validation (4 tests)
+- `helmdeck://image-models` resource list/read/unwired + catalog shape + defensive copy (6 tests)
+- Subprocess pack via test-binary self-exec: happy path, transform, non-zero exit + stderr, non-JSON stdout, empty stdout, timeout, missing path/binary, raw-binary sniff, OutputSchema vs handler boundary, capped-writer truncation (11 tests)
+- Subprocess pack dir-loader: empty/nonexistent dir, executable discovery, non-executable skip, basename sanitization (6 tests)
+
+### Fixed
+
+- **`image_generate.go:74` consistency gap** — the doc string promised `fal-key` auto-hydration "once #142 lands"; #142 shipped v0.11.0 but the `WellKnownEnvCredentials` entry was missing. Now added.
+
+### Out of scope (slipped to v0.13.0 / v1.0-rc1)
+
+- **#134 step 2** — the Helm chart itself ships with v1.0-rc1.
+- **T606a schema-derived form** — JSON Schema → React form rendering; v0.13.0.
+- **T811 manifest format** — typed schemas via YAML sidecar (`#173`); v0.13.0.
+- **T811 egress sandbox** — confine subprocess pack network access (`#174`); v0.13.0.
+- **arm64 sidecar image** — still blocked on Marp's amd64-only upstream tarball.
+
+### MCP Registry
+
+The auto-publish workflow (`.github/workflows/mcp-registry.yml`) republishes the listing on `v*` tag push. After tagging, verify at `https://registry.modelcontextprotocol.io/v0/servers/io.github.tosin2013/helmdeck` (expect `version: 0.12.0`, `isLatest: true`). Watch for the npm-publish race condition documented in `release.yml:118-157` — workflow_dispatch the `mcp-registry.yml` after npm publish completes if the first run fails with "package not found."
+
 ## [0.11.0] - 2026-05-10
 
 **Theme:** podcast/slides UX hardening + onboarding fixes + image generation.

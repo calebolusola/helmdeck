@@ -43,6 +43,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="${REPO_ROOT}/deploy/compose/compose.yaml"
+COMPOSE_BUILD_FILE="${REPO_ROOT}/deploy/compose/compose.build.yaml"
 ENV_FILE="${REPO_ROOT}/deploy/compose/.env.local"
 URL="http://localhost:3000"
 
@@ -81,7 +82,7 @@ info()  { printf "    %s%s%s\n" "${C_DIM}" "$*" "${C_RESET}"; }
 
 usage() {
   cat <<EOF
-Usage: scripts/install.sh [--reset] [--no-build] [--help]
+Usage: scripts/install.sh [--reset] [--no-build] [--image-mode] [--help]
 
 Bootstraps a fresh helmdeck install on the current host.
 
@@ -89,11 +90,18 @@ Options:
   --reset      Tear down the running stack and start over from scratch.
                Removes deploy/compose/.env.local and regenerates secrets.
   --no-build   Skip the build steps (web bundle, Go binaries, sidecar
-               image). Useful for re-running after a config change.
+               image). Still uses local build overlay if it's still
+               there — pairs with a prior successful build.
+  --image-mode Pull pre-built images from ghcr.io instead of building
+               from source. Implies --no-build. No Go toolchain
+               required — host needs only Docker + curl. Pin the
+               version with HELMDECK_VERSION=0.X.Y in .env.local;
+               defaults to "latest".
   --help       Print this help and exit.
 
 Examples:
-  scripts/install.sh                # Fresh install
+  scripts/install.sh                # Fresh install (build from source)
+  scripts/install.sh --image-mode   # Pull versioned images (no Go needed)
   scripts/install.sh --no-build     # Bring up without rebuilding
   scripts/install.sh --reset        # Wipe + reinstall
 
@@ -104,16 +112,27 @@ EOF
 
 DO_RESET=0
 DO_BUILD=1
+IMAGE_MODE=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --reset) DO_RESET=1 ;;
     --no-build) DO_BUILD=0 ;;
+    --image-mode) IMAGE_MODE=1; DO_BUILD=0 ;;
     --help|-h) usage; exit 0 ;;
     *) fail "unknown flag: $1"; usage; exit 1 ;;
   esac
   shift
 done
+
+# Compose file selection. In default (source-build) mode we layer the
+# build overlay on top of the base, so Compose actually builds locally.
+# In --image-mode we use only the base — `image:` references resolve
+# to ghcr.io/...:${HELMDECK_VERSION:-latest}.
+COMPOSE_FILES_ARGS=( -f "${COMPOSE_FILE}" )
+if [[ "${IMAGE_MODE}" -eq 0 ]]; then
+  COMPOSE_FILES_ARGS+=( -f "${COMPOSE_BUILD_FILE}" )
+fi
 
 # ────────────────────────────────────────────────────────────────────────
 # platform detection (used by per-tool install hints)
@@ -237,16 +256,22 @@ preflight() {
   step "Pre-flight checks"
   local failed=0
 
-  for tool in make openssl curl; do
+  for tool in openssl curl; do
     check_tool "${tool}" || failed=1
   done
   check_tool docker || failed=1
-  check_node_version  || failed=1
-  # Host Go is only needed when we actually build binaries on the host.
-  # The control-plane Dockerfile builds inside golang:1.26-alpine, so
-  # --no-build can run on a host with older Go (or no Go at all).
+  # make, node, and go are only needed for the source-build path.
+  # In --image-mode the host pulls pre-built images and never invokes
+  # make web-build / go build / make sidecar-build, so a Go-toolchain-
+  # free Linux box can still bring up the stack.
   if [[ "${DO_BUILD}" -eq 1 ]]; then
-    check_go_version  || failed=1
+    check_tool make || failed=1
+    check_node_version || failed=1
+    # Host Go is only needed when we actually build binaries on the
+    # host. The control-plane Dockerfile builds inside
+    # golang:1.26-alpine, so --no-build / --image-mode can run on a
+    # host with older Go (or no Go at all).
+    check_go_version || failed=1
   fi
 
   # Docker running check is separate because the binary can be
@@ -391,12 +416,25 @@ compose_pull() {
   # Pre-pull all images that aren't built locally, so `compose up` doesn't
   # block on an unattended download (or worse: come up healthy while the
   # sidecar image is still pulling in the background, leaving the first
-  # session hanging on a 30 s timeout). `--ignore-buildable` skips images
-  # whose service has a `build:` clause — those are produced by
-  # run_build / make sidecar-build above.
+  # session hanging on a 30 s timeout).
+  #
+  # Source-build mode: `--ignore-buildable` skips images whose service
+  # has a `build:` clause — those are produced by run_build /
+  # make sidecar-build.
+  #
+  # Image-mode: pull EVERYTHING — there are no buildable services in
+  # the base compose; the control-plane image must come from ghcr.io.
+  local pull_args=( pull )
+  if [[ "${IMAGE_MODE}" -eq 0 ]]; then
+    pull_args+=( --ignore-buildable )
+  fi
   step "Pre-pulling published images"
-  info "this fetches images like dxflrs/garage and helmdeck-sidecar before stack-up..."
-  if ! docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" pull --ignore-buildable; then
+  if [[ "${IMAGE_MODE}" -eq 1 ]]; then
+    info "image-mode: fetching helmdeck:${HELMDECK_VERSION:-latest}, helmdeck-sidecar, dxflrs/garage..."
+  else
+    info "this fetches images like dxflrs/garage and helmdeck-sidecar before stack-up..."
+  fi
+  if ! docker compose "${COMPOSE_FILES_ARGS[@]}" --env-file "${ENV_FILE}" "${pull_args[@]}"; then
     fail "image pull failed — check network reachability to docker.io and ghcr.io"
     fail "if behind a corporate proxy, set HTTPS_PROXY before re-running"
     exit 4
@@ -412,9 +450,17 @@ compose_up() {
   # treats Exited as failure even when restart: "no". Our own
   # wait_for_health() below polls /healthz directly and is the real
   # readiness gate.
-  if ! docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" up -d --build; then
+  local up_args=( up -d )
+  if [[ "${IMAGE_MODE}" -eq 0 ]]; then
+    # Source-build: ensure the local Dockerfile rebuilds before the
+    # service starts. In image-mode the base file has no `build:`
+    # blocks for buildable services, so --build would no-op and emit
+    # a "no such service" warning — skip it.
+    up_args+=( --build )
+  fi
+  if ! docker compose "${COMPOSE_FILES_ARGS[@]}" --env-file "${ENV_FILE}" "${up_args[@]}"; then
     fail "compose up failed — dumping control-plane logs:"
-    docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" logs control-plane 2>&1 | tail -40 >&2 || true
+    docker compose "${COMPOSE_FILES_ARGS[@]}" --env-file "${ENV_FILE}" logs control-plane 2>&1 | tail -40 >&2 || true
     exit 4
   fi
   ok "stack is up"
@@ -434,7 +480,7 @@ wait_for_health() {
     sleep 1
   done
   fail "control plane never reported healthy after 30s"
-  docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" logs control-plane 2>&1 | tail -40 >&2 || true
+  docker compose "${COMPOSE_FILES_ARGS[@]}" --env-file "${ENV_FILE}" logs control-plane 2>&1 | tail -40 >&2 || true
   exit 4
 }
 
@@ -446,7 +492,7 @@ do_reset() {
   step "Resetting helmdeck"
   if [[ -f "${COMPOSE_FILE}" ]]; then
     info "tearing down compose stack..."
-    docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" down -v --remove-orphans \
+    docker compose "${COMPOSE_FILES_ARGS[@]}" --env-file "${ENV_FILE}" down -v --remove-orphans \
       >/dev/null 2>&1 || true
     ok "compose stack down"
   fi
@@ -514,6 +560,12 @@ print_summary() {
 main() {
   cd "${REPO_ROOT}"
 
+  if [[ "${IMAGE_MODE}" -eq 1 ]]; then
+    info "install mode: image-mode (pulling versioned ghcr.io images)"
+  else
+    info "install mode: source-build (building control-plane + sidecar locally)"
+  fi
+
   if [[ "${DO_RESET}" -eq 1 ]]; then
     do_reset
   fi
@@ -523,6 +575,8 @@ main() {
 
   if [[ "${DO_BUILD}" -eq 1 ]]; then
     run_build
+  elif [[ "${IMAGE_MODE}" -eq 1 ]]; then
+    info "skipping build (--image-mode — pulling pre-built images instead)"
   else
     info "skipping build (--no-build)"
   fi

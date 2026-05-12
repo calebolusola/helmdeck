@@ -347,26 +347,47 @@ The auto-publish workflow (`.github/workflows/mcp-registry.yml`) republishes the
 
 ---
 
-## v0.12.0 — Pack authoring + Test Runner (planned, was v0.11.0) {#v0120}
+## v0.12.0 — Content-pack image chaining + v1.0 install-path unblocker + pack-authoring MVP — ✅ Shipped 2026-05-12 {#v0120}
 
-**Theme:** "Anyone with Python or Node can ship a helmdeck pack."
+**Theme:** "Covers come for free, the install path becomes Kubernetes-ready, and pack-authoring grows up."
 
-> **Slipped from v0.11.0.** Pushed again because the v0.11.0 slot got reallocated to the podcast/slides UX hardening cluster. Original scope intact.
+Bundled release across four threads that lined up after v0.11.0. Originally framed as Pack Authoring + Test Runner alone; re-scoped during the v0.11.0 retrospective to absorb #146 (unblocked by v0.11.0's #71), #158 (sibling), and #134 step 1 (v1.0 prerequisite). Planning artefact: `/root/.claude/plans/i-would-like-to-elegant-kahan.md`.
 
-### Ships (planned)
+### Shipped
 
-- **T606a** — Pack Test Runner UI tab on the Capability Packs panel. Form derived from input schema, dispatches `POST /api/v1/packs/{name}`, renders typed output + artifact links inline. Closes the gap that left every per-pack reference page saying "no UI today".
-- **T811** — `command` handler type. Subprocess packs in any language (stdin JSON / stdout JSON protocol) with the same egress guard + audit logging as built-in Go packs. Removes the "you must contribute Go" barrier.
-- **Pack authoring tutorial series** — a full `build-your-first-pack.md` tutorial + how-to recipes for the three common shapes (REST API wrap, CLI wrap, webhook receiver). Worked-example pack picked from the candidate-pack research. The other candidates ship as `pack-candidate` issues for community contribution.
-- **`docs/explanation/pack-architecture.md`** — the why behind the schema + handler split, vault placeholder system, error-code closed set, and MCP tool exposure under the hood.
+- **#146 — chain `image.generate` into the three content packs.** `podcast.generate` gains `cover_image: bool` → emits `cover_image_artifact_key`. `slides.render` and `slides.narrate` gain `hero_image_prompt: string` → injects inline base64 PNG (before slide 1 for render; INTO slide 1 for narrate to preserve the per-slide TTS pipeline). `blog.publish` gains `feature_image_artifact_key` + `hero_image: bool` — for Ghost, uploads via `/ghost/api/admin/images/upload/` first then stamps the URL into `feature_image`; for artifact-mode, writes a sidecar `<slug>-cover.png`. All four packs share one `RunImageGen` entrypoint (extracted from `internal/packs/builtin/image_generate.go` in PR #165's first commit) so chains don't pay for a registry round-trip.
+- **#158 — `helmdeck://image-models` MCP resource.** Mirrors `helmdeck://voices` (v0.11.0). 7-model curated catalog: flux/schnell, flux/dev, flux-pro/v1.1, fast-sdxl, flux-realism, recraft-v3, ideogram/v2. Each entry has cost, p50 latency, seed/image-size support, max resolution, capability tags. New `internal/imagemodels` package. Also lands the long-overdue `fal-key` entry in `WellKnownEnvCredentials` — closes the consistency gap `image_generate.go:74` advertised since v0.11.0.
+- **#134 step 1 — unified install paths (P1 v1.0-rc1 unblocker).** `deploy/compose/compose.yaml` strips `build:` blocks, pins versioned tags. New `deploy/compose/compose.build.yaml` overlay re-adds them for source-build. `scripts/install.sh --image-mode` flag pulls pre-built images, skips Go/Node/make preflight. Hosts with only Docker + `openssl` + `curl` can install the full stack. The Helm chart (v1.0-rc1) will reuse the same versioned-tag convention.
+- **T606a MVP — Pack Test Runner UI.** Click a pack row in `/packs` → modal with JSON textarea + Submit. POSTs to `/api/v1/packs/{name}`, renders response (duration, cost hint, full JSON). Closes the "no UI today" gap. Schema-derived form ships v0.13.0.
+- **T811 MVP — subprocess pack type.** `packs.NewCommandPack(...)` constructor + `LoadCommandPacks` dir-scanner + `HELMDECK_COMMAND_PACKS_DIR` wire-up. Pack authors can ship in any language (Python, Node, Bash, Rust) without a Go toolchain. Protocol: stdin = JSON input; stdout = JSON output; exit ≠0 → `handler_failed` with truncated stderr.
 
-### Hard exit gate
+### Hard exit gates (all met)
 
-A non-maintainer can follow the tutorial against a fresh `make install` and ship a working pack against an external service in under 60 minutes.
+1. **Image-mode install works on a clean VM with no Go toolchain.** Verified locally; CI smoke leg (`compose-lint` job) validates both compose layouts on every PR.
+2. **All four content-pack chains produce valid output end-to-end.** ~20 new unit tests cover each chain with stubbed fal.ai/ElevenLabs/Ghost.
+3. **`helmdeck://image-models` lists 7 models.** Verified in `internal/mcp/resources_test.go`.
+4. **T606a UI can run `image.generate` end-to-end.** Manual click-through plus full TypeScript strict-mode build green.
+5. **T811 example pack round-trips through subprocess with audit-log parity to a Go pack.** 17 new tests via the self-exec pattern.
+
+### Slipped to v0.13.0
+
+- **T606a schema-derived form** — JSON Schema → React form (replaces the v0.12.0 MVP textarea)
+- **T811 manifest format** — typed schemas via YAML sidecar (`#173`)
+- **T811 egress sandbox** — confine subprocess pack network access (`#174`)
+- Marketplace UI / install CLI — bundled with v0.13.0's T810
+
+### Slipped to v1.0-rc1
+
+- **#134 step 2** — the Helm chart itself
+- arm64 sidecar image (still blocked on Marp upstream)
 
 ### Audience
 
-Community contributors. Sets up the marketplace in v0.13.0.
+Operators wanting Kubernetes prep; community contributors who want to write packs without Go; existing users who want covers/heroes for free.
+
+### MCP Registry
+
+The auto-publish workflow republishes the listing on `v*` tag push. Watch for the npm-publish race condition documented in `release.yml:118-157` — workflow_dispatch the `mcp-registry.yml` after npm publish completes if the first run fails with "package not found."
 
 ---
 
@@ -377,6 +398,9 @@ Community contributors. Sets up the marketplace in v0.13.0.
 ### Ships (planned)
 
 - **T810** — Pack marketplace registry model. `index.yaml` catalog schema, `helmdeck-pack.yaml` manifest, cosign trust verification, `HELMDECK_MARKETPLACE_URL` env var, catalog refresh endpoint.
+- **T811-followup — subprocess pack manifest format ([#173](https://github.com/tosin2013/helmdeck/issues/173)).** YAML/JSON sidecar manifest declares typed `input_schema`/`output_schema`, version, author, env, timeout. The v0.12.0 MVP shipped passthrough schemas only; this completes the authoring surface.
+- **T811-followup — subprocess egress sandbox ([#174](https://github.com/tosin2013/helmdeck/issues/174)).** Today subprocess egress is the host environment's responsibility (helmdeck's `EgressGuard` only intercepts in-process HTTP). Proxy-mode confinement closes the gap for the 90% case.
+- **T606a-followup — schema-derived test-runner form.** Replaces the v0.12.0 MVP textarea with a real React form rendered from the pack's `BasicSchema`. Dropdowns for closed-set fields, client-side required-fields validation, typed inputs.
 - **T812** — `helmdeck pack install/uninstall` CLI commands + `POST /api/v1/marketplace/install` REST endpoint. Hot-load (no restart).
 - **T813** — Marketplace UI panel at `/marketplace`. Browse-by-category, search, pack detail, install/uninstall, trust badges (Core / Signed / Unsigned).
 - **T814** — Community marketplace repo (`tosin2013/helmdeck-marketplace`) seeded with the worked-example pack from v0.10 + initial catalog from accepted `pack-candidate` issues.

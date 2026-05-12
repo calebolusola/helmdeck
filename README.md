@@ -37,10 +37,12 @@ Three audiences specifically:
 
 ## Status
 
-**v0.11.0 shipped** — 39 capability packs (now including `image.generate` via fal.ai), credential vault with
-env-var auto-hydration, podcast/slides UX hardening (fail-loud on missing credentials, per-turn duration floor,
-dry_run cost preview), `helmdeck://voices` MCP resource, repo packs, code-edit loop, OpenTelemetry GenAI
-instrumentation, and the full Management UI are all live. Helmdeck is also published to the [official
+**v0.12.0 shipped** — 39 capability packs with **end-to-end content chaining** (image.generate auto-feeds
+podcast/slides/blog covers and hero images), the **`helmdeck://image-models` MCP resource** for agent
+discoverability, **image-mode install** (`./scripts/install.sh --image-mode` pulls from ghcr.io with no Go
+toolchain — the v1.0 Helm chart unblocker), the **Pack Test Runner UI** (click any pack in `/packs` to run it
+with a JSON body), and the **subprocess pack type** (drop an executable into `$HELMDECK_COMMAND_PACKS_DIR` to
+register a `cmd.<name>` pack — Python/Node/Bash/Rust authors welcome). Helmdeck is also published to the [official
 MCP Registry](https://registry.modelcontextprotocol.io/) as
 `io.github.tosin2013/helmdeck` for one-line install in registry-aware
 clients. Phase 6.5 (MCP Server Hosting & Pack Evolution) is complete;

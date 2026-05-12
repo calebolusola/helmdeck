@@ -1,0 +1,27 @@
+# Helmdeck — Compose build overlay (#134).
+#
+# Layered on top of compose.yaml when operators want to build from
+# source rather than pull pre-built images. Adds `build:` directives
+# to the services that have a Dockerfile in this repo.
+#
+# Usage:
+#
+#   docker compose \
+#     -f deploy/compose/compose.yaml \
+#     -f deploy/compose/compose.build.yaml \
+#     --env-file deploy/compose/.env.local up -d
+#
+# When `build:` is present alongside `image:`, Compose builds the
+# image locally and tags it with the `image:` reference from the base
+# file — so the build output gets a sensible name without overriding
+# the version tag in production deploys.
+#
+# scripts/install.sh layers this overlay by default. Pass --image-mode
+# to scripts/install.sh (or omit this overlay manually) to skip the
+# build and pull pre-built images at $HELMDECK_VERSION instead.
+
+services:
+  control-plane:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/control-plane.Dockerfile
