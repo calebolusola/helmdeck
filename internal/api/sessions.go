@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -92,6 +93,7 @@ func registerSessionRoutes(mux *http.ServeMux, deps Deps) {
 				return
 			}
 		}
+		fmt.Println(req)
 		spec := session.Spec{
 			Label:       req.Label,
 			Image:       req.Image,
@@ -102,12 +104,21 @@ func registerSessionRoutes(mux *http.ServeMux, deps Deps) {
 			MaxTasks:    req.MaxTasks,
 			Env:         req.Env,
 		}
+		fmt.Println("SPEC:", spec)
+
 		s, err := rt.Create(r.Context(), spec)
+
+		fmt.Println("S?:", s)
+		fmt.Println("ERR?:", err)
+
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "create_failed", err.Error())
 			return
 		}
+		fmt.Println("ERROR WRITTEN SUCCESSFULLY")
 		writeJSON(w, http.StatusCreated, toResponse(s))
+		fmt.Println("JSON WRITTEN SUCCESSFULLY")
+
 	})
 
 	mux.HandleFunc("GET /api/v1/sessions", func(w http.ResponseWriter, r *http.Request) {

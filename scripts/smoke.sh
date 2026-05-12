@@ -131,7 +131,7 @@ echo "--- execute 1+1"
 EXECUTE=$(api POST /api/v1/browser/execute -d "{
   \"session_id\": \"${SESSION_ID}\",
   \"script\": \"1+1\"
-}")
+}") 
 if [[ "${EXECUTE}" != *'"result":2'* ]]; then
   echo "smoke: execute assertion failed: ${EXECUTE}" >&2; exit 1
 fi
@@ -144,7 +144,7 @@ api POST /api/v1/browser/screenshot -o "${SHOT}" -d "{
   \"session_id\": \"${SESSION_ID}\",
   \"full_page\": false
 }"
-if ! head -c4 "${SHOT}" | grep -q $'\x89PNG'; then
+if ! head -c4 "${SHOT}" | LC_ALL=C grep -q $'\x89PNG'; then
   echo "smoke: screenshot is not a PNG (head: $(head -c8 "${SHOT}" | xxd))" >&2
   exit 1
 fi
@@ -185,7 +185,7 @@ if [[ ${PACK_SHOT_SIZE} -lt 500 ]]; then
   echo "smoke: pack screenshot suspiciously small (${PACK_SHOT_SIZE} bytes)" >&2
   exit 1
 fi
-if ! head -c4 /tmp/pack-shot.png | grep -q $'\x89PNG'; then
+if ! head -c4 /tmp/pack-shot.png | LC_ALL=C grep -q $'\x89PNG'; then
   echo "smoke: pack screenshot is not a PNG" >&2
   exit 1
 fi

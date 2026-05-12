@@ -156,12 +156,17 @@ func New(opts ...Option) (*Runtime, error) {
 // Create spawns a new browser sidecar container.
 func (r *Runtime) Create(ctx context.Context, spec session.Spec) (*session.Session, error) {
 	resolved := r.withDefaults(spec)
+	fmt.Println("resolved:", resolved)
 
 	memBytes, err := units.RAMInBytes(resolved.MemoryLimit)
+	fmt.Println("memBytes:", memBytes)
+	fmt.Println("memBytes err:", err)
 	if err != nil {
 		return nil, fmt.Errorf("memory_limit %q: %w", resolved.MemoryLimit, err)
 	}
 	shmBytes, err := units.RAMInBytes(resolved.SHMSize)
+	fmt.Println("shmBytes:", shmBytes)
+	fmt.Println("shmBytes err:", err)
 	if err != nil {
 		return nil, fmt.Errorf("shm_size %q: %w", resolved.SHMSize, err)
 	}
@@ -173,9 +178,12 @@ func (r *Runtime) Create(ctx context.Context, spec session.Spec) (*session.Sessi
 		// fall through; ContainerCreate will fail visibly if the image is missing
 		_ = err
 	}
+	fmt.Println("image ensured")
+	fmt.Println("about to build host config")
 
 	id := uuid.NewString()
 	hostCfg := r.buildHostConfig(memBytes, shmBytes, resolved.CPULimit)
+	fmt.Println("host config built")
 
 	cfg := &container.Config{
 		Image: resolved.Image,
@@ -190,28 +198,37 @@ func (r *Runtime) Create(ctx context.Context, spec session.Spec) (*session.Sessi
 			nat.Port(playwrightMCPPort + "/tcp"): {},
 		},
 	}
+	fmt.Println("config built")
 
 	created, err := r.cli.ContainerCreate(ctx, cfg, hostCfg, nil, nil, "helmdeck-session-"+id)
+	fmt.Println("Container Create Err:", err)
+	// fmt.Println("container create result:", created, err)
 	if err != nil {
 		return nil, fmt.Errorf("container create: %w", err)
 	}
+	fmt.Println("container created")
 	if err := r.cli.ContainerStart(ctx, created.ID, container.StartOptions{}); err != nil {
 		// Best-effort cleanup on failed start so we don't leak the container.
 		_ = r.cli.ContainerRemove(context.Background(), created.ID, container.RemoveOptions{Force: true})
 		return nil, fmt.Errorf("container start: %w", err)
 	}
+	fmt.Println("container started")
+	fmt.Println("container err:", err)
 
 	// Inspect the running container to learn its IP on the attached network
 	// so the control plane can reach CDP. With WithNetwork the IP comes from
 	// NetworkSettings.Networks[<name>].IPAddress; on the default bridge it
 	// comes from NetworkSettings.IPAddress.
 	insp, err := r.cli.ContainerInspect(ctx, created.ID)
+	fmt.Println("container inspect result:", insp, err)
 	if err != nil {
 		_ = r.cli.ContainerRemove(context.Background(), created.ID, container.RemoveOptions{Force: true})
 		return nil, fmt.Errorf("container inspect: %w", err)
 	}
 	cdpEndpoint := buildCDPEndpoint(insp, r.network, cdpPort)
+	fmt.Println("cdp endpoint:", cdpEndpoint)
 	playwrightMCPEndpoint := buildPlaywrightMCPEndpoint(insp, r.network, playwrightMCPPort, resolved.Env)
+	fmt.Println("playwright mcp endpoint:", playwrightMCPEndpoint)
 
 	s := &session.Session{
 		ID:                    id,
@@ -222,10 +239,12 @@ func (r *Runtime) Create(ctx context.Context, spec session.Spec) (*session.Sessi
 		CDPEndpoint:           cdpEndpoint,
 		PlaywrightMCPEndpoint: playwrightMCPEndpoint,
 	}
+	fmt.Println("session created:", s)
 
 	r.mu.Lock()
 	r.sessions[id] = s
 	r.mu.Unlock()
+	fmt.Println("session added to runtime")
 
 	return s, nil
 }

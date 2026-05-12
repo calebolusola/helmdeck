@@ -24,6 +24,7 @@ services:
     image: ghcr.io/tosin2013/helmdeck:dev
     container_name: helmdeck-control-plane
     restart: unless-stopped
+    user: root
     ports:
       - "0.0.0.0:3000:3000"
     # Forward every secret from the install-script-generated .env.local
@@ -76,7 +77,7 @@ services:
     # Set HELMDECK_DOCKER_GID in your .env to match `getent group docker
     # | cut -d: -f3` on your host (typically 999 on Debian/Ubuntu).
     group_add:
-      - "${HELMDECK_DOCKER_GID:-999}"
+      - "1"
 
   # Belt-and-suspenders pull of the sidecar image after the stack is up.
   # scripts/install.sh now runs `docker compose pull --ignore-buildable`
