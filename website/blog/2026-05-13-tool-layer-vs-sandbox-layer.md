@@ -94,4 +94,15 @@ Two reasons. First, OpenShell is NVIDIA's project — they're optimizing for the
 
 Second, and more importantly: the two-stack story is *more honest* about what each layer does. A merged product would have to abstract both layers behind one API, and the abstractions would leak. An enterprise reviewing helmdeck-with-OpenShell can audit each layer independently — read OpenShell's policy YAML, read helmdeck's pack schemas, see exactly what each layer is responsible for. That's a security property of the architecture, not just an aesthetic preference.
 
-If you're an architect evaluating either project today: read [helmdeck's design doc](/integrations/openshell) for the composed story, read [OpenShell's openclaw.md example](https://github.com/NVIDIA/OpenShell) for the standalone sandbox story, and decide which layer is your current bottleneck. Then watch the four issues — Phases 1 and 2 will land first, and you can be the operator who reports on the production deployment.
+## CTA — Tell us where you'd want OpenShell first
+
+The four-phase roadmap is real but the phasing is currently maintainer-best-guess. If you're an architect reviewing helmdeck for production, the most useful thing you can do today is comment on **[issue #193](https://github.com/tosin2013/helmdeck/issues/193)** with two fields:
+
+- **Pack family that worries you most** — `browser.*`, `python.run` / `node.run`, `vision.*`, `web.scrape`, `repo.*`, something else?
+- **What you're isolating against** — Chromium zero-day + drive-by exploit, LLM-generated code reading host secrets, prompt-injected egress to an attacker-controlled URL, an internal SSRF target reachable from the sidecar network, something else?
+
+If the same pack family + threat shows up from three independent commenters, **Phase 3 ([#196](https://github.com/tosin2013/helmdeck/issues/196)) moves up the queue**. If a different pattern dominates — say everyone cares about `python.run` + filesystem isolation but nobody cares about browser MicroVMs — the roadmap re-prioritizes accordingly (Landlock support could land before the libkrun work).
+
+This isn't a marketing waitlist. It's the same pattern that drove [#173 and #174](https://github.com/tosin2013/helmdeck/issues/173) (subprocess pack follow-ups filed in real-time as community needs surfaced) and the [cost-reproduction comments](/explanation/why-helmdeck#run-the-comparison-yourself) that calibrate the [Why helmdeck](/explanation/why-helmdeck) page. Your input shapes what ships first.
+
+If you want to *write* one of the phases instead of just shape it, Phases 1 and 2 ([#194](https://github.com/tosin2013/helmdeck/issues/194), [#195](https://github.com/tosin2013/helmdeck/issues/195)) are docs + example YAML and explicitly tagged `good first issue`.
