@@ -24,6 +24,45 @@ Helmdeck's thesis from day one has been that the bottleneck for production-grade
 
 Both projects ship something the other doesn't have. We are not solving the same problem.
 
+```mermaid
+graph TB
+    subgraph agent_layer["Agent layer"]
+        agent["Claude Code / OpenClaw / Hermes"]
+    end
+
+    subgraph tool_layer["Tool layer — helmdeck owns"]
+        mcp["MCP server + 39 packs"]
+        vault["Vault (AES-256-GCM, placeholder tokens)"]
+        engine["Pack engine + SessionRuntime"]
+    end
+
+    subgraph sandbox_layer["Sandbox layer — OpenShell owns"]
+        gateway["Gateway API"]
+        opa["L7 OPA policy"]
+        microvm["libkrun MicroVM"]
+        landlock["Landlock filesystem"]
+    end
+
+    subgraph sidecar["Sidecar workload<br/>(browser / python / node / vision)"]
+        s1["MicroVM-isolated kernel<br/>policy-enforced egress<br/>landlock-restricted FS"]
+    end
+
+    agent -->|MCP tool call| mcp
+    engine -->|SessionRuntime API| gateway
+    gateway -->|provisions| sidecar
+
+    classDef helmdeck fill:#dbeafe,stroke:#1d4ed8,color:#1e3a8a
+    classDef openshell fill:#fed7aa,stroke:#c2410c,color:#7c2d12
+    classDef agent fill:#e9d5ff,stroke:#7e22ce,color:#581c87
+    classDef workload fill:#dcfce7,stroke:#15803d,color:#14532d
+    class tool_layer helmdeck
+    class sandbox_layer openshell
+    class agent_layer agent
+    class sidecar workload
+```
+
+The sidecar workload at the bottom is the composed outcome — neither team owns it alone, but together they produce a hardware-isolated kernel + L7 policy + Landlock FS that neither could ship standalone.
+
 ## What changes if you compose them
 
 The standalone helmdeck story today: agents call our 39 packs via MCP. The packs run in Docker containers with seccomp profiles and dropped capabilities. The egress guard rejects outbound URLs against a blocklist. That's solid for most operators, and Phase 7 (Kubernetes & GA, in progress as of v0.12.1) adds the production hardening — NetworkPolicies, KEDA autoscaling, External Secrets, the works.
