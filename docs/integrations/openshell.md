@@ -10,7 +10,7 @@ keywords: [helmdeck, OpenShell, NVIDIA, sandbox, MicroVM, libkrun, OPA, policy, 
 >
 > **Last reviewed:** 2026-05-13 against [helmdeck v0.12.1](../../CHANGELOG.md#0121---2026-05-13) (39 packs) and [NVIDIA/OpenShell](https://github.com/NVIDIA/OpenShell) alpha.
 >
-> **Tracking:** Phase 1 ([#TBD]), Phase 2 ([#TBD]), Phase 3 ([#TBD]), Phase 4 ([#TBD]). Tracking epic at [#TBD]. (Issue numbers backfilled after the issues are opened.)
+> **Tracking:** Phase 1 ([#194](https://github.com/tosin2013/helmdeck/issues/194)), Phase 2 ([#195](https://github.com/tosin2013/helmdeck/issues/195)), Phase 3 ([#196](https://github.com/tosin2013/helmdeck/issues/196)), Phase 4 ([#197](https://github.com/tosin2013/helmdeck/issues/197)). Tracking epic at [#193](https://github.com/tosin2013/helmdeck/issues/193).
 
 ## Why this exists
 
