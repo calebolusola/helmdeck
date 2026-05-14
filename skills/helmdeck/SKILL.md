@@ -1,21 +1,22 @@
 ---
 name: helmdeck
-description: Use helmdeck's 36 capability packs (browser, web scraping, slides, repo orientation, filesystem, git, GitHub, HTTP, vision, document OCR/parse, Python/Node execution) via MCP — all prefixed `helmdeck__*` in the tool catalog.
+description: Use helmdeck's 39 capability packs (browser, web scraping, content grounding, podcast/slide/blog production, image generation, repo orientation, filesystem, git, GitHub, HTTP, vision, document OCR/parse, Python/Node execution) via MCP — all prefixed `helmdeck__*` in the tool catalog.
 metadata:
   openclaw:
     skillKey: helmdeck
-    helmdeckVersion: "24bd0c3"
+    helmdeckVersion: "v0.12.0"
     source: https://github.com/tosin2013/helmdeck/blob/main/skills/helmdeck/SKILL.md
 ---
 
 <!-- This SKILL.md is the canonical helmdeck agent skill. Stamped at
-     helmdeck commit 24bd0c3. Re-run scripts/configure-openclaw.sh
-     after any helmdeck release so your OpenClaw agent picks up new packs
-     and updated decision tables. -->
+     helmdeck v0.12.0 (PR #184 brought it in sync with the 39-pack
+     in-tree catalog). Re-run scripts/configure-openclaw.sh after any
+     helmdeck release so your OpenClaw agent picks up new packs and
+     updated decision tables. -->
 
 ## You are connected to helmdeck
 
-Helmdeck is a browser automation and AI capability platform. You have access to 36 tools exposed as MCP tools. Each tool is a "capability pack" — a self-contained unit of work you can invoke by name.
+Helmdeck is a browser automation and AI capability platform. You have access to 39 tools exposed as MCP tools. Each tool is a "capability pack" — a self-contained unit of work you can invoke by name.
 
 ## Pack catalog
 
@@ -51,6 +52,15 @@ Helmdeck is a browser automation and AI capability platform. You have access to 
 - `github.post_comment` — Comment on an issue or PR.
 - `github.create_release` — Create a GitHub release.
 - `github.search` — Search code, issues, or repos.
+
+### Blog
+- `blog.publish` — Publish a post to a Ghost blog (live Admin API) OR write rendered markdown/HTML to the helmdeck artifact store. Two body modes: pass `body` directly OR pass `prompt+model` and the pack expands the body via the gateway LLM. Two formats: `markdown` (default; rendered via goldmark when Ghost wants HTML) or `html` (passes through). Vault credential `ghost-admin-key` (id:hexsecret) for Ghost destination. Composes naturally with `research.deep` (find sources) → `content.ground` (cite sources in the body) → `blog.publish` (ship it).
+
+### Podcast
+- `podcast.generate` — Multi-speaker (1..N) podcast MP3 from a script, prompt, OR long-form content (URL/text). Speakers are a `{name: voice_id}` map; the same pack handles solo monologue and multi-host dialogue. Five closed-set `theme`s bake in podcast best practices: `interview`, `debate`, `news-roundup`, `deep-dive`, `solo-essay`. Day 1 uses ElevenLabs (vault `elevenlabs-key`); the `engine` field is reserved for future TTS providers. **Critical**: when using prompt or source modes, the agent supplies the speakers map upfront (with voice IDs) — the pack tells the LLM which speaker names to use. `generate_cover_prompt: true` returns an image-gen prompt for cover art; v0.12.0+ also accepts `cover_image: true` to chain image.generate directly and return a `cover_image_artifact_key`. Composes with `research.deep` → `podcast.generate` (theme `news-roundup` or `deep-dive`) for evidence-grounded shows.
+
+### Image
+- `image.generate` — Text → image via fal.ai (`fal-ai/flux/schnell` default, ~$0.003/image, 1-3s). Vault `fal-key` or `HELMDECK_FAL_KEY`. 1-4 images per call. Use for podcast covers, slide shields, blog hero images. The `engine` field is `"fal"` only day 1; Replicate is reserved for a community PR. Pair with `podcast.generate`'s `generate_cover_prompt: true` to chain prompt → cover art in two pack calls — or use the v0.12.0 chained inputs (`cover_image`, `hero_image_prompt`, `feature_image_artifact_key`) on the content packs to skip the intermediate step entirely.
 
 ### Repository
 - `repo.fetch` — Clone a git repo into a session. Returns `clone_path`, `session_id`, **and a context envelope** (`tree`, `readme`, `entrypoints`, `signals`) so you can orient immediately without follow-up calls. See "Repo discovery pattern" below.

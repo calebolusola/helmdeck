@@ -25,6 +25,8 @@ Needs the Firecrawl overlay (same toggle as [`research.deep`](../research/deep.m
 HELMDECK_FIRECRAWL_ENABLED=true
 ```
 
+If the env var is unset the pack fails fast with `invalid_input`. If the env var is set but the `firecrawl` service is unreachable (every search call errors at the transport layer), the pack fails with `handler_failed` and a message pointing at the service URL — rather than silently returning "no sources found." Partial successes are preserved: when Firecrawl is healthy and some queries genuinely return zero results, those claims show up under `skipped` and the run still completes.
+
 ## Inputs
 
 Two input modes — supply **either** `text` (in-memory) **or** `clone_path` + `path` (session-file mode), not both.
@@ -38,6 +40,7 @@ Two input modes — supply **either** `text` (in-memory) **or** `clone_path` + `
 | `max_claims` | `number` | no | `5` | Cap on claims to ground. Hard cap at 8 (Firecrawl per-call cost). |
 | `topic` | `string` | no | — | Hint for the claim extractor. e.g. `"quantum computing"` narrows extraction to topic-relevant claims and biases the search step. |
 | `rewrite` | `boolean` | no | `false` | When `true`, the LLM also rewrites weak claims into stronger prose backed by the discovered source. More expensive (multiple LLM passes); use when "make this blog post more credible" is the goal. |
+| `max_completion_tokens` | `number` | no | `2048` | Cap on the claim-extractor LLM's completion. Raise when running against a verbose weak model or a long post — JSON truncation surfaces as an unparseable-JSON handler error. Hard upper bound: `8192`. |
 | `_session_id` | `string` | yes (file mode) | — | Required when `clone_path` is set; not used in text mode. |
 
 ## Outputs

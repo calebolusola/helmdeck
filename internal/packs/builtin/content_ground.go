@@ -92,7 +92,15 @@ import (
 const (
 	defaultContentGroundClaims  = 5
 	maxContentGroundClaims      = 8
-	defaultContentGroundTokens  = 1024
+	// defaultContentGroundTokens is the completion-token cap for the
+	// claim-extractor call. 1024 was too tight: the system prompt +
+	// topic + 5-8 claim JSON entries can land near ~750 tokens, leaving
+	// minimal headroom; weak models or large posts would truncate the
+	// JSON mid-response, surfacing as "unparseable JSON" with an empty
+	// snippet (#179). 2048 gives ~1200 tokens of output budget while
+	// staying cheap on the common case.
+	defaultContentGroundTokens  = 2048
+	maxContentGroundTokens      = 8192
 	// contentGroundPrompt is the frozen system prompt for the claim
 	// extractor. The strict JSON schema is critical — we parse the
 	// response with json.Unmarshal and bail on invalid_input if it
@@ -178,6 +186,11 @@ type contentGroundInput struct {
 	MaxClaims int    `json:"max_claims"`
 	Topic     string `json:"topic"`
 	Rewrite   bool   `json:"rewrite"` // when true, rewrite weak claims using source content
+	// MaxCompletionTokens optionally raises the claim-extractor's
+	// completion cap above the 2048 default. Useful for posts with
+	// long claim summaries or when running against a weak model that
+	// produces verbose JSON. Hard upper bound: 8192.
+	MaxCompletionTokens int `json:"max_completion_tokens,omitempty"`
 }
 
 // claimPlan is the parsed shape the extractor LLM returns.
@@ -228,6 +241,17 @@ func contentGroundHandler(d vision.Dispatcher) packs.HandlerFunc {
 		}
 		if maxClaims > maxContentGroundClaims {
 			maxClaims = maxContentGroundClaims
+		}
+		maxTokens := defaultContentGroundTokens
+		if in.MaxCompletionTokens > 0 {
+			if in.MaxCompletionTokens > maxContentGroundTokens {
+				return nil, &packs.PackError{
+					Code: packs.CodeInvalidInput,
+					Message: fmt.Sprintf("max_completion_tokens %d exceeds cap of %d",
+						in.MaxCompletionTokens, maxContentGroundTokens),
+				}
+			}
+			maxTokens = in.MaxCompletionTokens
 		}
 
 		// Two modes:
@@ -292,7 +316,7 @@ func contentGroundHandler(d vision.Dispatcher) packs.HandlerFunc {
 		// knows what to do with it because it reads like part of
 		// the goal framing rather than a schema field.
 		ec.Report(10, "extracting claims")
-		claims, rawModel, perr := extractClaims(ctx, d, in.Model, original, in.Topic, maxClaims)
+		claims, rawModel, perr := extractClaims(ctx, d, in.Model, original, in.Topic, maxClaims, maxTokens)
 		if perr != nil {
 			return nil, perr
 		}
@@ -322,6 +346,17 @@ func contentGroundHandler(d vision.Dispatcher) packs.HandlerFunc {
 		skipped := make([]string, 0)
 		patched := original
 		considered := 0
+		// firecrawlCalls counts claims that survived the substring
+		// check and reached callFirecrawlSearch. firecrawlErrors
+		// counts how many of those returned a transport error.
+		// When every reached call failed → Firecrawl is unreachable
+		// and we must fail loud (#182) rather than return an empty-
+		// success "no sources found" output. "Search returned zero
+		// results" or "verify rejected the result" do NOT increment
+		// firecrawlErrors — those are legitimate empty outcomes that
+		// preserve partial-success behavior when Firecrawl is healthy.
+		firecrawlCalls := 0
+		firecrawlErrors := 0
 
 		for i, c := range claims {
 			ec.Report(20+float64(i)*60/float64(len(claims)),
@@ -333,6 +368,7 @@ func contentGroundHandler(d vision.Dispatcher) packs.HandlerFunc {
 			}
 			// Search with inline scrape so we get page content
 			// alongside URLs — needed for source verification.
+			firecrawlCalls++
 			fc, searchErr := callFirecrawlSearch(ctx, base, firecrawlSearchRequest{
 				Query: c.Query,
 				Limit: 3,
@@ -341,6 +377,10 @@ func contentGroundHandler(d vision.Dispatcher) packs.HandlerFunc {
 				},
 			})
 			if searchErr != nil {
+				firecrawlErrors++
+				if ec.Logger != nil {
+					ec.Logger.Warn("firecrawl search failed", "claim", c.Text, "err", searchErr)
+				}
 				skipped = append(skipped, c.Text)
 				continue
 			}
@@ -365,6 +405,18 @@ func contentGroundHandler(d vision.Dispatcher) packs.HandlerFunc {
 				Title:   title,
 				Snippet: snippet,
 			})
+		}
+
+		// Fail loud if every Firecrawl call we attempted errored at
+		// the transport layer — that's a service issue, not a result
+		// issue, and silently producing an empty-success output would
+		// mislead the caller into thinking content.ground "tried but
+		// found nothing" rather than "couldn't reach Firecrawl" (#182).
+		if firecrawlCalls > 0 && firecrawlErrors == firecrawlCalls {
+			return nil, &packs.PackError{
+				Code:    packs.CodeHandlerFailed,
+				Message: fmt.Sprintf("content.ground: every Firecrawl search call failed; verify the firecrawl service is reachable at %s", base),
+			}
 		}
 
 		// 5. Rewrite (optional). When rewrite=true, ask the LLM to
@@ -428,11 +480,10 @@ func contentGroundHandler(d vision.Dispatcher) packs.HandlerFunc {
 // extractClaims asks the LLM to pick up to maxClaims grounding
 // candidates. Returns the parsed claim list plus the raw model
 // response (useful for future audit logging).
-func extractClaims(ctx context.Context, d vision.Dispatcher, model, markdown, topic string, maxClaims int) ([]struct {
+func extractClaims(ctx context.Context, d vision.Dispatcher, model, markdown, topic string, maxClaims, maxTokens int) ([]struct {
 	Text  string `json:"text"`
 	Query string `json:"query"`
 }, string, *packs.PackError) {
-	maxTokens := defaultContentGroundTokens
 	var userMsg strings.Builder
 	fmt.Fprintf(&userMsg, "MAX_CLAIMS: %d\n", maxClaims)
 	if strings.TrimSpace(topic) != "" {

@@ -410,6 +410,121 @@ func TestContentGround_MaxClaimsCap(t *testing.T) {
 	}
 }
 
+// TestContentGround_DefaultMaxTokens verifies the claim-extractor
+// dispatch carries the new 2048-token default cap (#179 — 1024 was
+// too tight and truncated JSON mid-response with weak models).
+func TestContentGround_DefaultMaxTokens(t *testing.T) {
+	fc := stubFirecrawlSearch(t, 200, `{"success":true,"data":[]}`)
+	disp := &scriptedDispatcherWT{replies: []string{`{"claims":[]}`}}
+	_, err := runContentGround(t, disp, &execScript{}, fc,
+		`{"text":"A short post.","model":"openai/gpt-4o-mini"}`)
+	if err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	if len(disp.captured) == 0 {
+		t.Fatal("dispatcher received no requests")
+	}
+	got := disp.captured[0].MaxTokens
+	if got == nil || *got != 2048 {
+		t.Errorf("MaxTokens = %v, want 2048", got)
+	}
+}
+
+// TestContentGround_MaxCompletionTokensOverride verifies operators
+// can raise the cap via the new input field for verbose JSON or
+// long-claim posts.
+func TestContentGround_MaxCompletionTokensOverride(t *testing.T) {
+	fc := stubFirecrawlSearch(t, 200, `{"success":true,"data":[]}`)
+	disp := &scriptedDispatcherWT{replies: []string{`{"claims":[]}`}}
+	_, err := runContentGround(t, disp, &execScript{}, fc,
+		`{"text":"A short post.","model":"openai/gpt-4o-mini","max_completion_tokens":4096}`)
+	if err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	got := disp.captured[0].MaxTokens
+	if got == nil || *got != 4096 {
+		t.Errorf("MaxTokens = %v, want 4096", got)
+	}
+}
+
+// TestContentGround_MaxCompletionTokensOverCap rejects values above
+// the 8192 hard cap with CodeInvalidInput so runaway costs are
+// surfaced loud rather than silently truncated downstream.
+func TestContentGround_MaxCompletionTokensOverCap(t *testing.T) {
+	fc := stubFirecrawlSearch(t, 200, `{"success":true,"data":[]}`)
+	disp := &scriptedDispatcherWT{}
+	_, err := runContentGround(t, disp, &execScript{}, fc,
+		`{"text":"x","model":"openai/gpt-4o-mini","max_completion_tokens":16384}`)
+	pe := &packs.PackError{}
+	if !errors.As(err, &pe) || pe.Code != packs.CodeInvalidInput {
+		t.Errorf("want invalid_input for over-cap, got %v", err)
+	}
+	if len(disp.captured) != 0 {
+		t.Errorf("dispatcher should not be called when input is rejected, got %d calls", len(disp.captured))
+	}
+}
+
+// TestContentGround_FirecrawlAllErrors verifies the pack fails loud
+// with CodeHandlerFailed when every Firecrawl search call returns a
+// transport error — silently degrading to "no sources found" would
+// mislead the caller about Firecrawl reachability (#182).
+func TestContentGround_FirecrawlAllErrors(t *testing.T) {
+	// 500 on every search call.
+	fc := stubFirecrawlSearch(t, 500, `internal error`)
+	markdown := "Quantum computers are fast. Decoherence is a challenge.\n"
+	disp := &scriptedDispatcherWT{replies: []string{
+		`{"claims":[{"text":"Quantum computers are fast.","query":"q1"},{"text":"Decoherence is a challenge.","query":"q2"}]}`,
+	}}
+	_, err := runContentGround(t, disp, &execScript{}, fc,
+		`{"text":"`+strings.ReplaceAll(markdown, "\n", "\\n")+`","model":"openai/gpt-4o-mini"}`)
+	pe := &packs.PackError{}
+	if !errors.As(err, &pe) {
+		t.Fatalf("want PackError, got %v (%T)", err, err)
+	}
+	if pe.Code != packs.CodeHandlerFailed {
+		t.Errorf("Code = %q, want handler_failed", pe.Code)
+	}
+	if !strings.Contains(pe.Message, "every Firecrawl search call failed") {
+		t.Errorf("Message = %q, want substring 'every Firecrawl search call failed'", pe.Message)
+	}
+}
+
+// TestContentGround_FirecrawlPartialErrorsSucceed verifies the
+// 100%-errors gate doesn't kill partial-success runs. With Firecrawl
+// healthy but one query returning empty, the run should complete
+// with the surviving claims grounded.
+func TestContentGround_FirecrawlPartialErrorsSucceed(t *testing.T) {
+	callCount := 0
+	fc := stubFirecrawlFromHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		if callCount == 1 {
+			// First call: legitimate empty result (not a transport error).
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"success":true,"data":[]}`))
+			return
+		}
+		// Second call: usable URL.
+		writeSearchResult(w, firecrawlSearchItem{URL: "https://ex.com/d", Title: "D", Markdown: "Decoherence is a challenge."})
+	})
+	markdown := "Quantum computers are fast. Decoherence is a challenge."
+	disp := &scriptedDispatcherWT{replies: []string{
+		`{"claims":[{"text":"Quantum computers are fast.","query":"q1"},{"text":"Decoherence is a challenge.","query":"q2"}]}`,
+		`{"pick":0,"snippet":"Decoherence is a challenge."}`,
+	}}
+	raw, err := runContentGround(t, disp, &execScript{}, fc,
+		`{"text":"`+markdown+`","model":"openai/gpt-4o-mini"}`)
+	if err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	var out struct {
+		ClaimsGrounded int `json:"claims_grounded"`
+	}
+	_ = json.Unmarshal(raw, &out)
+	if out.ClaimsGrounded != 1 {
+		t.Errorf("claims_grounded = %d, want 1 (partial success)", out.ClaimsGrounded)
+	}
+}
+
 // itoa is a tiny helper because the test file otherwise only uses
 // `strings` and I'd rather not import strconv just for one call.
 func itoa(n int) string {

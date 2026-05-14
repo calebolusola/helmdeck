@@ -347,6 +347,39 @@ The auto-publish workflow (`.github/workflows/mcp-registry.yml`) republishes the
 
 ---
 
+## v0.12.1 — Release-image hot-patch + v0.12.0 reliability bugs — ✅ Shipped 2026-05-13 {#v0121}
+
+**Theme:** "Same-day hot-patch for what v0.12.0 missed."
+
+Four bugs landed within hours of v0.12.0 shipping. The dominant one (#180) is a release-image regression — every fresh `docker pull` user saw a blank UI. The other three are smaller reliability fixes around the firecrawl overlay and the `content.ground` pack. All four landed as separate small PRs (#186–189) so each is independently revertible if a regression surfaces. Bundled into v0.12.1 the same day. Planning artefact: `/root/.claude/plans/i-would-like-to-elegant-kahan.md`.
+
+### Shipped
+
+- **#180 — release workflow now runs `npm run build` before docker image build.** The dominant fix. `web/dist/assets/` is gitignored; CI workflow was building the docker image without ever bundling the Vite output, so the image baked in whatever stale `web/dist/index.html` was last committed (referencing asset hashes not present in `web/dist/assets/`). Added Node setup + `cd web && npm ci && npm run build` step to `.github/workflows/release.yml`, plus a verify step that fails the release loud if rebuilt `index.html` references missing assets — defense in depth so this regression can't ship twice.
+- **#181 — firecrawl-rabbitmq healthcheck `start_period: 15s` → `60s`.** RabbitMQ's Erlang VM + mnesia init takes 30-60s on alpine cold-boot. Shorter window exhausted retries before health was achievable → container reported unhealthy → `helmdeck-firecrawl` (correctly waiting via `depends_on: condition: service_healthy`) never started → operator had to `docker compose up` again. Aligned with `firecrawl-searxng`'s 60s precedent in the same file.
+- **#179 — `content.ground` configurable completion-token cap.** Hard-coded 1024 was too tight for the structured claim-plan JSON (system prompt + topic + 5-8 claim entries ≈ 750 tokens, leaving ~270 of headroom; weak models or large posts blew through it → `CodeHandlerFailed: claim extractor returned unparseable JSON`). Default bumped 1024 → 2048; new optional `max_completion_tokens` input lets operators raise the cap up to 8192. Over-cap rejects with `CodeInvalidInput`.
+- **#182 — `content.ground` fails loud when Firecrawl is unreachable.** Per-claim grounding loop was swallowing `callFirecrawlSearch` transport errors silently, producing empty-success "no sources found" output. Now tracks `firecrawlCalls` vs `firecrawlErrors` separately; when 100% of attempted calls hit transport errors → `CodeHandlerFailed` with a Firecrawl-reachability message. Partial-success runs preserved.
+
+### Hard exit gates (all met)
+
+- ✅ `go test ./internal/packs/builtin/... -run ContentGround` green (5 new tests)
+- ✅ `make smoke` regression-protect v0.12.0
+- ✅ `docker pull ghcr.io/tosin2013/helmdeck:0.12.1` shows assets matching index.html
+- ✅ MCP-Registry chained publish (PR #177 workflow_run trigger) — validated this release
+- ✅ npm `@helmdeck/mcp-bridge@0.12.1` published with provenance
+
+### Not in v0.12.1 (deferred)
+
+- **#183 audit-table columns** (`job_id`, `finish_reason`, `raw_content_len`) — migration + write-path changes; v0.13.0.
+- **#173 / #174** — community good-first-issues, kept open for external contributors.
+
+### Concurrent docs/SEO change
+
+- **#184 — SKILL.md catalog refresh.** Pack count 36 → 39 (added `blog.publish`, `podcast.generate`, `image.generate` which had never been documented in SKILL.md). `helmdeckVersion` frontmatter from `24bd0c3` → `v0.12.0`. Shipped as PR #190, not part of the v0.12.1 patch bundle.
+- **SEO sitemap trim.** Dropped `/blog/tags/*`, `/blog/archive`, `/blog/authors` from the Docusaurus sitemap (137 URLs → 122) after Google Search Console reported 61 URLs in "Discovered – currently not indexed" with crawl timestamp `1969-12-31`. Shipped as PR #185.
+
+---
+
 ## v0.12.0 — Content-pack image chaining + v1.0 install-path unblocker + pack-authoring MVP — ✅ Shipped 2026-05-12 {#v0120}
 
 **Theme:** "Covers come for free, the install path becomes Kubernetes-ready, and pack-authoring grows up."
@@ -474,6 +507,30 @@ Released as feature-gated minors as they stabilize. No hard sequence.
 | v1.6 | Pre-packaged Chrome DevTools MCP / Playwright MCP entries | 006 |
 | v1.7 | Firecracker production hardening (bare-metal node guidance) | 011 |
 | v1.x | Lightpanda alternate browser engine | 001 |
+| v1.x | **NVIDIA OpenShell integration** — sidecars in MicroVMs + L7 policy | 011, 036 (planned) |
+
+## v1.x — Enterprise integration tracks {#enterprise-integration-tracks}
+
+Post-GA themes that compose with the innovation tracks above but are scoped as community-led integration work rather than core platform features. Each is broken into independently-mergeable phases tracked as separate GitHub issues so contributors can pick up one phase without blocking on the others.
+
+### NVIDIA OpenShell integration
+
+**Theme:** "Helmdeck sidecars inside hardware-isolated, policy-governed sandboxes."
+
+[NVIDIA OpenShell](https://github.com/NVIDIA/OpenShell) is a Rust-based safe runtime for autonomous AI agents — declarative YAML policies, OPA-enforced L7 network rules, libkrun MicroVM compute driver, Landlock filesystem isolation. Helmdeck's pack engine operates at the tool layer; OpenShell operates at the sandbox layer. The integration is non-duplicative — each project covers a layer the other doesn't.
+
+Canonical design doc: [`docs/integrations/openshell.md`](integrations/openshell.md).
+
+**Four phases (all post-v1.0):**
+
+1. **Shallow integration** — run the helmdeck control plane inside an OpenShell sandbox. Docs + example policy only. No helmdeck code changes. Good first issue.
+2. **Agent sandbox integration** — run the agent (OpenClaw / Claude Code / Hermes) inside an OpenShell sandbox with egress restricted to helmdeck MCP + `inference.local`. Docs + example policy. Extends `openclaw.md`'s topology section. Good first issue.
+3. **`OpenShellSessionRuntime` backend** — third `SessionRuntime` implementation (alongside `DockerSessionRuntime` and v1.0's `KubernetesSessionRuntime`) that routes sidecar lifecycle through the OpenShell Gateway API. Hardware-isolated browser / Python / Node sidecars. Help wanted; multi-week Go work. Lands a new ADR (036).
+4. **Correlated observability** — join helmdeck's OTel GenAI traces with OpenShell's OCSF security events on the sandbox ID. End-to-end traces from MCP tool call → policy decision → outbound HTTP. Help wanted; OTel collector + OPA experience.
+
+**Why post-v1.0:** Phase 3 modifies `SessionRuntime`, the seam between helmdeck's pack engine and execution backends. Touching it pre-GA forks the v1.0 test matrix; post-GA it's purely additive. Plus OpenShell is alpha — production deployments need a stable OpenShell Gateway API first.
+
+**Gating:** v1.0 ships first. Phases 1 and 2 can land as docs-only PRs once both projects are GA. Phases 3 and 4 wait on a stable OpenShell Gateway API (no calendar commitment).
 
 ---
 
