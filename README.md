@@ -186,7 +186,7 @@ roadmap.
 
 ## Built-in Capability Packs
 
-38 packs ship in the box. Each one hides a multi-step workflow
+39 packs ship in the box. Each one hides a multi-step workflow
 behind a single typed JSON-Schema call so weak open-weight models
 can drive it as reliably as frontier models. The full input/output
 contract for every pack lives in [`docs/PACKS.md`](docs/PACKS.md).
